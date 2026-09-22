@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, ArrowLeft, ArrowRight, Bell, BookOpen, CheckCircle2, ChevronDown,
   ClipboardList, Clock3, Download, FileText, HelpCircle, LayoutDashboard, LogOut,
