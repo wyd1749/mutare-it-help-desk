@@ -1669,7 +1669,7 @@ export default function PageRoot() {
       } catch (err) {
         console.error('Could not load your profile.', err)
         if (!cancelled) setLoadError('Could not verify your account. Please refresh and try signing in again.')
-      } font-bold {
+      } finally {
         if (!cancelled) setAuthChecking(false)
       }
     }
