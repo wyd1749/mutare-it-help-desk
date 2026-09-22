@@ -41,7 +41,7 @@ function formatRelativeTime(iso: string): string {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-// --- Employees / technicians / admins ---
+// --- Employees / technicians / admins (all rows in the `employees` table) ---
 
 export async function fetchEmployees(): Promise<Employee[]> {
   const supabase = createClient()
@@ -186,7 +186,16 @@ export async function deleteTicket(id: string): Promise<void> {
   if (error) throw error
 }
 
-// --- Activity log ---
+export async function clearAllTickets(): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('tickets')
+    .delete()
+    .neq('id', '')
+  if (error) throw error
+}
+
+// --- Activity log (Header's notification bell) ---
 
 export async function fetchActivities(): Promise<Activity[]> {
   const supabase = createClient()
@@ -210,7 +219,7 @@ export async function logActivity(userId: string, action: string): Promise<void>
   if (error) throw error
 }
 
-// --- Ticket notes ---
+// --- Ticket notes (internal, staff-only — see TicketDetail) ---
 
 export type Note = {
   id: string
@@ -309,7 +318,7 @@ export async function deleteArticle(id: string): Promise<void> {
   if (error) throw error
 }
 
-// --- Service desk settings ---
+// --- Service desk settings (single row, Administrator-editable) ---
 
 export type ServiceDeskSettings = {
   responseTarget: string
