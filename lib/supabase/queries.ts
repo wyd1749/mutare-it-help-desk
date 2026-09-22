@@ -175,6 +175,15 @@ export async function updateTicket(ticket: Ticket, people: Employee[]): Promise<
   if (error) throw error
 }
 
+export async function deleteTicket(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('tickets')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
 // --- Activity log (Header's notification bell) ---
 // RLS scopes this to your own activity, or every activity if you're an
 // Administrator (see the activities_select_self_or_admin policy) — so an
