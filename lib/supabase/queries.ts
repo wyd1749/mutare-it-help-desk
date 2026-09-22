@@ -41,7 +41,7 @@ function formatRelativeTime(iso: string): string {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-// --- Employees / technicians / admins (all rows in the `employees` table) ---
+// --- Employees / technicians / admins ---
 
 export async function fetchEmployees(): Promise<Employee[]> {
   const supabase = createClient()
@@ -107,11 +107,6 @@ export async function fetchTickets(): Promise<Ticket[]> {
   }))
 }
 
-// Ticket ids look like IT-1000, IT-1001, ... `id` is the table's primary
-// key (see supabase/schema.sql) and nothing generates it server-side, so
-// the app has to pick one. This reads the highest existing IT-#### id and
-// adds one; createTicket() below retries with the next number if another
-// request grabs the same id first (a unique-violation, Postgres code 23505).
 async function nextTicketId(supabase: ReturnType<typeof createClient>, attempt: number): Promise<string> {
   const { data, error } = await supabase.from('tickets').select('id').like('id', 'IT-%')
   if (error) throw error
@@ -153,7 +148,7 @@ export async function createTicket(
         id: data.id,
         title: data.title,
         category: data.category,
-        requester: '', // filled in by the caller, which already knows the signed-in employee's name
+        requester: '',
         department: data.department,
         time: formatRelativeTime(data.reported_at),
         priority: data.priority,
@@ -163,13 +158,11 @@ export async function createTicket(
       }
     }
     lastError = error
-    if (error.code !== '23505') throw error // anything other than "id already taken" is a real failure
+    if (error.code !== '23505') throw error
   }
   throw lastError ?? new Error('Could not generate a unique ticket ID. Please try again.')
 }
 
-// `people` is the combined employees+technicians list, used to resolve the
-// assignee's display name (stored on the ticket) back to an employees.id.
 export async function updateTicket(ticket: Ticket, people: Employee[]): Promise<void> {
   const supabase = createClient()
   const assignee = people.find((p) => p.name === ticket.assignee)
@@ -193,7 +186,7 @@ export async function deleteTicket(id: string): Promise<void> {
   if (error) throw error
 }
 
-// --- Activity log (Header's notification bell) ---
+// --- Activity log ---
 
 export async function fetchActivities(): Promise<Activity[]> {
   const supabase = createClient()
@@ -217,7 +210,7 @@ export async function logActivity(userId: string, action: string): Promise<void>
   if (error) throw error
 }
 
-// --- Ticket notes (internal, staff-only — see TicketDetail) ---
+// --- Ticket notes ---
 
 export type Note = {
   id: string
@@ -307,7 +300,16 @@ export async function updateArticle(id: string, input: { title: string; category
   return { id: row.id, title: row.title, category: row.category, body: row.body, author: row.author?.name ?? 'ICT Administration', updatedAt: formatRelativeTime(row.updated_at) }
 }
 
-// --- Service desk settings (single row, Administrator-editable) ---
+export async function deleteArticle(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('articles')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+// --- Service desk settings ---
 
 export type ServiceDeskSettings = {
   responseTarget: string

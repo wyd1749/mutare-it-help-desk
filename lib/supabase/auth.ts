@@ -7,9 +7,6 @@ export async function signIn(email: string, password: string): Promise<void> {
   if (error) throw error
 }
 
-// Admin-only. Calls the server route, which verifies the caller is an
-// Administrator and creates the login + employees row using the service
-// role key (which never reaches the browser).
 export async function createTeamMember(input: {
   name: string
   email: string
@@ -41,12 +38,6 @@ export async function signOut(): Promise<void> {
   if (error) throw error
 }
 
-// Fires whenever Supabase Auth's session changes (sign in, sign out, token
-// refresh, and also when the browser tab regains focus and Supabase
-// re-checks the session). `event` lets the caller tell a real sign-in
-// apart from a routine refresh, e.g. 'TOKEN_REFRESHED' after switching
-// back to the tab, so it doesn't have to redo work for it. Returns an
-// unsubscribe function for cleanup in a useEffect.
 export function onAuthStateChange(callback: (event: string, hasSession: boolean) => void): () => void {
   const supabase = createClient()
   const {
@@ -57,11 +48,6 @@ export function onAuthStateChange(callback: (event: string, hasSession: boolean)
   return () => subscription.unsubscribe()
 }
 
-// The employees row linked to whoever is currently signed in (via the
-// user_id set by the admin create-user route). Returns
-// null if no one is signed in, or if this auth account was never linked
-// to a pre-provisioned employees row (e.g. it was created directly in the
-// Supabase dashboard with an email that isn't in employees) — RLS blocks such accounts from reading anything else.
 export async function fetchCurrentEmployee(): Promise<Employee | null> {
   const supabase = createClient()
   const {
