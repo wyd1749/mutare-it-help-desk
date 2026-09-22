@@ -15,7 +15,7 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0(@supabase/supabase-js@2.116.0)
       '@supabase/supabase-js':
-        specifier: ^2.58.0
+        specifier: ^2.116.0
         version: 2.116.0
       '@vercel/analytics':
         specifier: 1.6.1
