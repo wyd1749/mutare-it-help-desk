@@ -71,6 +71,15 @@ export async function createEmployee(input: {
   return data as Employee
 }
 
+export async function deleteEmployee(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('employees')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
 // --- Tickets ---
 
 export async function fetchTickets(): Promise<Ticket[]> {
@@ -185,10 +194,6 @@ export async function deleteTicket(id: string): Promise<void> {
 }
 
 // --- Activity log (Header's notification bell) ---
-// RLS scopes this to your own activity, or every activity if you're an
-// Administrator (see the activities_select_self_or_admin policy) — so an
-// admin's bell fills up with everyone's actions, and an employee's or
-// technician's only shows their own.
 
 export async function fetchActivities(): Promise<Activity[]> {
   const supabase = createClient()
