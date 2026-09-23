@@ -129,7 +129,10 @@ export async function createTicket(
     priority: Ticket['priority']
     description: string
   },
-  requesterId: string
+  requesterId: string,
+  // Optional: set on insert so an admin-created ticket lands already
+  // assigned in a single write, instead of a create-then-update pair.
+  assigneeId?: string | null
 ): Promise<Ticket> {
   const supabase = createClient()
   let lastError: any = null
@@ -144,8 +147,8 @@ export async function createTicket(
         requester_id: requesterId,
         department: input.department,
         priority: input.priority,
-        status: 'Open',
-        assignee_id: null,
+        status: assigneeId ? 'In progress' : 'Open',
+        assignee_id: assigneeId ?? null,
         description: input.description,
       })
       .select('id,title,category,department,reported_at,priority,status,description')
@@ -160,6 +163,8 @@ export async function createTicket(
         time: formatRelativeTime(data.reported_at),
         priority: data.priority,
         status: data.status,
+        // Caller fills in the real name — it already has the technician
+        // object it resolved assigneeId from, no need to round-trip it.
         assignee: 'Unassigned',
         description: data.description,
       }

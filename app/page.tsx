@@ -571,7 +571,7 @@ function NewAdminTicket({
             Create another
           </button>
           <button onClick={onBack} className="rounded-xl bg-[#24769f] px-5 py-3 text-sm font-bold text-white">
-            Back to overview
+            View in request list
           </button>
         </div>
       </div>
@@ -805,7 +805,7 @@ function AdminWorkspace({
   if (active === 'New ticket') {
     return (
       <NewAdminTicket
-        onBack={() => setActive('Overview')}
+        onBack={() => setActive('All requests')}
         onSubmit={onCreateTicket}
         employees={employees}
         technicians={technicians}
@@ -2108,15 +2108,17 @@ export default function PageRoot() {
     if (!requester) throw new Error('Select who this ticket is for.')
     const assignee = input.assigneeId ? technicianUsers.find((t) => t.id === input.assigneeId) : undefined
 
+    // Single insert carries the assignee straight into the row — no
+    // separate update-by-name step that can silently miss.
     const created = await dbCreateTicket(
       { title: input.title, category: input.category, priority: input.priority, description: input.description, department: requester.department },
-      requester.id
+      requester.id,
+      assignee?.id
     )
-    let ticket: Ticket = { ...created, requester: requester.name }
-
-    if (assignee) {
-      ticket = { ...ticket, assignee: assignee.name, status: 'In progress' }
-      await dbUpdateTicket(ticket, [...employees, ...technicianUsers])
+    const ticket: Ticket = {
+      ...created,
+      requester: requester.name,
+      assignee: assignee ? assignee.name : 'Unassigned',
     }
 
     setTickets((prev) => [ticket, ...prev])
