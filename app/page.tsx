@@ -754,6 +754,10 @@ function TicketDetail({
   const [notePosting, setNotePosting] = useState(false)
   const [noteError, setNoteError] = useState('')
 
+  // Only administrators may reassign tickets. Technicians and other users
+  // see the current assignee as read-only text — never an editable control.
+  const isAdmin = user.role === 'Administrator'
+
   useEffect(() => {
     let cancelled = false
     setNotesLoading(true)
@@ -867,18 +871,24 @@ function TicketDetail({
         <Card>
           <h2 className="font-serif text-lg font-bold">Manage request</h2>
           <label className="mt-5 block text-sm font-semibold">Assign to technician</label>
-          <select
-            value={draft.assignee}
-            onChange={(e) => setDraft({ ...draft, assignee: e.target.value, status: e.target.value === 'Unassigned' ? 'Open' : 'In progress' })}
-            className="input mt-2"
-          >
-            <option>Unassigned</option>
-            {technicians.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          {isAdmin ? (
+            <select
+              value={draft.assignee}
+              onChange={(e) => setDraft({ ...draft, assignee: e.target.value, status: e.target.value === 'Unassigned' ? 'Open' : 'In progress' })}
+              className="input mt-2"
+            >
+              <option>Unassigned</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.name}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="mt-2 rounded-xl border border-[#dce7ed] bg-[#f7fafb] px-4 py-2.5 text-sm font-semibold text-[#26465d]">
+              {draft.assignee === 'Unassigned' ? 'Not yet assigned' : draft.assignee}
+            </p>
+          )}
           <label className="mt-5 block text-sm font-semibold">Status</label>
           <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Status })} className="input mt-2">
             <option>Open</option>
