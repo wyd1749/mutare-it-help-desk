@@ -500,6 +500,180 @@ function NewRequest({
   )
 }
 
+type NewAdminTicketInput = {
+  title: string
+  category: string
+  priority: Priority
+  description: string
+  requesterId: string
+  assigneeId?: string
+}
+
+function NewAdminTicket({
+  onBack,
+  onSubmit,
+  employees,
+  technicians,
+  seniorTechnicians,
+  admins,
+}: {
+  onBack: () => void
+  onSubmit: (t: NewAdminTicketInput) => Promise<Ticket>
+  employees: Employee[]
+  technicians: Employee[]
+  seniorTechnicians: Employee[]
+  admins: Employee[]
+}) {
+  // Anyone in the council can be the requester on an admin-filed ticket —
+  // not just employees. Group them so the dropdown stays readable.
+  const requesterGroups: { label: string; people: Employee[] }[] = [
+    { label: 'Employees', people: employees },
+    { label: 'Technicians', people: technicians },
+    { label: 'Senior technicians', people: seniorTechnicians },
+    { label: 'Administrators', people: admins },
+  ].filter((g) => g.people.length > 0)
+  const allRequesters = [...employees, ...technicians, ...seniorTechnicians, ...admins]
+
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [priority, setPriority] = useState<Priority>('Medium')
+  const [category, setCategory] = useState('Network & connectivity')
+  const [requesterId, setRequesterId] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [created, setCreated] = useState<Ticket | null>(null)
+
+  if (created)
+    return (
+      <div className="mx-auto flex max-w-2xl flex-col items-center px-5 py-20 text-center">
+        <div className="flex size-16 items-center justify-center rounded-full bg-[#eef8f1] text-[#27734a]">
+          <CheckCircle2 size={32} />
+        </div>
+        <h1 className="mt-6 font-serif text-3xl font-bold">Ticket created</h1>
+        <p className="mt-3 max-w-md text-sm leading-6 text-[#71899a]">
+          <strong>{created.id}</strong> has been logged for {created.requester}
+          {created.assignee !== 'Unassigned' ? ` and assigned to ${created.assignee}` : ''}.
+        </p>
+        <div className="mt-8 flex gap-3">
+          <button
+            onClick={() => {
+              setCreated(null)
+              setTitle('')
+              setDescription('')
+              setPriority('Medium')
+              setCategory('Network & connectivity')
+              setRequesterId('')
+              setAssigneeId('')
+            }}
+            className="rounded-xl border border-[#dce7ed] bg-white px-5 py-3 text-sm font-bold text-[#31546b]"
+          >
+            Create another
+          </button>
+          <button onClick={onBack} className="rounded-xl bg-[#24769f] px-5 py-3 text-sm font-bold text-white">
+            Back to overview
+          </button>
+        </div>
+      </div>
+    )
+
+  const submit = async () => {
+    if (!title || !description || !requesterId) return
+    setError('')
+    setSubmitting(true)
+    try {
+      const ticket = await onSubmit({
+        title,
+        category,
+        priority,
+        description,
+        requesterId,
+        assigneeId: assigneeId || undefined,
+      })
+      setCreated(ticket)
+    } catch (err: any) {
+      setError(err?.message || 'Could not create the ticket. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl p-5 sm:p-8">
+      <button onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-semibold text-[#24769f]">
+        <ArrowLeft size={16} /> Back
+      </button>
+      <PageTitle eyebrow="Log a request" title="Create a ticket on someone's behalf" sub="Use this when an issue comes in by phone, email, or in person." />
+      <Card>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="Who is this for?" full>
+            <select value={requesterId} onChange={(e) => setRequesterId(e.target.value)} className="input">
+              <option value="">Select a person…</option>
+              {requesterGroups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {p.department}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </Field>
+          <Field label="Issue title" full>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Cannot connect to office Wi-Fi" className="input" />
+          </Field>
+          <Field label="Issue category">
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
+              <option>Network & connectivity</option>
+              <option>Email & communication</option>
+              <option>Hardware & devices</option>
+              <option>Access & security</option>
+              <option>Software & applications</option>
+              <option>Other IT issue</option>
+            </select>
+          </Field>
+          <Field label="Urgency">
+            <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)} className="input">
+              <option>Critical</option>
+              <option>High</option>
+              <option>Medium</option>
+              <option>Low</option>
+            </select>
+          </Field>
+          <Field label="Assign to (optional)" full>
+            <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="input">
+              <option value="">Leave unassigned</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Describe the issue" full>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={5}
+              placeholder="What happened, what they were trying to do, and any error message they saw."
+              className="input min-h-32 resize-y"
+            />
+          </Field>
+        </div>
+        {error && <p className="mt-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{error}</p>}
+        <button
+          disabled={!title || !description || !requesterId || submitting}
+          onClick={submit}
+          className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#24769f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {submitting ? 'Creating…' : 'Create ticket'} <ArrowRight size={16} />
+        </button>
+      </Card>
+    </div>
+  )
+}
+
 function RequestDetail({ ticket, onBack }: { ticket: Ticket; onBack: () => void }) {
   return (
     <div className="mx-auto max-w-3xl p-5 sm:p-8">
@@ -606,6 +780,7 @@ function AdminWorkspace({
   onDeleteArticle,
   settings,
   onSaveSettings,
+  onCreateTicket,
 }: {
   tickets: Ticket[]
   onSaveTicket: (t: Ticket) => Promise<void>
@@ -625,7 +800,20 @@ function AdminWorkspace({
   onDeleteArticle: (id: string) => Promise<void>
   settings: ServiceDeskSettings | null
   onSaveSettings: (s: ServiceDeskSettings) => Promise<void>
+  onCreateTicket: (input: NewAdminTicketInput) => Promise<Ticket>
 }) {
+  if (active === 'New ticket') {
+    return (
+      <NewAdminTicket
+        onBack={() => setActive('Overview')}
+        onSubmit={onCreateTicket}
+        employees={employees}
+        technicians={technicians}
+        seniorTechnicians={seniorTechnicians}
+        admins={admins}
+      />
+    )
+  }
   if (active === 'Knowledge base') {
     return <KnowledgeBase admin articles={articles} onCreate={onCreateArticle} onUpdate={onUpdateArticle} onDelete={onDeleteArticle} />
   }
@@ -648,6 +836,8 @@ function AdminWorkspace({
   }
   return <AdminQueue tickets={tickets} onSaveTicket={onSaveTicket} onDeleteTicket={onDeleteTicket} overview={active === 'Overview'} go={setActive} technicians={technicians} user={user} />
 }
+
+
 
 function AdminQueue({
   tickets,
@@ -704,9 +894,14 @@ function AdminQueue({
       eyebrow={`Good morning, ${user.name.split(' ')[0]}`}
       sub="Review, assign, and resolve every request from one place."
       action={
-        <button onClick={() => go('Reports')} className="flex h-11 items-center gap-2 rounded-xl border border-[#dce7ed] bg-white px-5 text-sm font-bold text-[#31546b]">
-          <Download size={16} /> Export report
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button onClick={() => go('New ticket')} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#24769f] px-5 text-sm font-bold text-white">
+            <Plus size={17} /> New ticket
+          </button>
+          <button onClick={() => go('Reports')} className="flex h-11 items-center gap-2 rounded-xl border border-[#dce7ed] bg-white px-5 text-sm font-bold text-[#31546b]">
+            <Download size={16} /> Export report
+          </button>
+        </div>
       }
     >
       <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1907,6 +2102,31 @@ export default function PageRoot() {
     return withRequester
   }
 
+  const submitAdminTicket = async (input: NewAdminTicketInput): Promise<Ticket> => {
+    if (!user) throw new Error('You are signed out. Please sign in again.')
+    const requester = [...employees, ...technicianUsers, ...seniorTechnicians, ...admins].find((p) => p.id === input.requesterId)
+    if (!requester) throw new Error('Select who this ticket is for.')
+    const assignee = input.assigneeId ? technicianUsers.find((t) => t.id === input.assigneeId) : undefined
+
+    const created = await dbCreateTicket(
+      { title: input.title, category: input.category, priority: input.priority, description: input.description, department: requester.department },
+      requester.id
+    )
+    let ticket: Ticket = { ...created, requester: requester.name }
+
+    if (assignee) {
+      ticket = { ...ticket, assignee: assignee.name, status: 'In progress' }
+      await dbUpdateTicket(ticket, [...employees, ...technicianUsers])
+    }
+
+    setTickets((prev) => [ticket, ...prev])
+    const note = assignee
+      ? `Created ticket ${ticket.id} for ${requester.name} and assigned it to ${assignee.name}`
+      : `Created ticket ${ticket.id} for ${requester.name}`
+    dbLogActivity(user.id, note).catch((err) => console.error('Failed to log activity', err))
+    return ticket
+  }
+
   const saveTicket = async (updated: Ticket): Promise<void> => {
     await dbUpdateTicket(updated, [...employees, ...technicianUsers])
     setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
@@ -2055,6 +2275,7 @@ export default function PageRoot() {
         onDeleteArticle={deleteArticleHandler}
         settings={settings}
         onSaveSettings={saveSettings}
+        onCreateTicket={submitAdminTicket}
       />
     )
   } else if (role === 'senior_technician') {
