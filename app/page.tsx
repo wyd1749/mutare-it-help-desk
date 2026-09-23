@@ -996,8 +996,9 @@ function TechnicianWorkspace({
 }
 
 // Read-only monitor for the Senior Technician role: every currently-assigned
-// issue, grouped by the technician handling it. The only action available is
-// deleting a report — no reassignment, status changes, or other editing.
+// issue, most recent first, with the technician handling it shown inline.
+// The only action available is deleting a report — no reassignment, status
+// changes, or other editing.
 function SeniorTechnicianMonitor({
   tickets,
   onDeleteTicket,
@@ -1008,14 +1009,11 @@ function SeniorTechnicianMonitor({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
+  // `tickets` already arrives newest-first (fetchTickets orders by
+  // reported_at descending), so filtering preserves that recency order —
+  // the most recently reported assigned issue is always first in the list.
   const assigned = tickets.filter((t) => t.assignee !== 'Unassigned')
-  const byTechnician: [string, Ticket[]][] = []
-  assigned.forEach((t) => {
-    const group = byTechnician.find(([name]) => name === t.assignee)
-    if (group) group[1].push(t)
-    else byTechnician.push([t.assignee, [t]])
-  })
-  byTechnician.sort((a, b) => a[0].localeCompare(b[0]))
+  const technicianCount = new Set(assigned.map((t) => t.assignee)).size
 
   const handleDelete = async (id: string) => {
     setError('')
@@ -1031,48 +1029,43 @@ function SeniorTechnicianMonitor({
   }
 
   return (
-    <Page title="Service desk monitor" eyebrow="Senior technician" sub="A live view of every assigned issue, grouped by technician.">
+    <Page title="Service desk monitor" eyebrow="Senior technician" sub="A live view of every assigned issue, most recent first.">
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <Stat dark label="Assigned issues" value={String(assigned.length)} note="Currently in a technician's queue" />
-        <Stat label="Technicians with work" value={String(byTechnician.length)} note="Actively assigned" />
+        <Stat label="Technicians with work" value={String(technicianCount)} note="Actively assigned" />
         <Stat label="Resolved" value={String(assigned.filter((t) => t.status === 'Resolved').length)} note="Among assigned issues" />
       </div>
       {error && <p className="mb-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-sm font-semibold text-[#bd3c2d]">{error}</p>}
-      {byTechnician.length ? (
-        byTechnician.map(([name, list]) => (
-          <Card key={name}>
-            <CardHead title={name} />
-            <p className="-mt-3 mb-3 text-xs text-[#8aa0ae]">
-              {list.length} issue{list.length === 1 ? '' : 's'} assigned
-            </p>
-            <div className="divide-y divide-[#edf1f3]">
-              {list.map((t) => (
-                <div key={t.id} className="flex flex-wrap items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{t.title}</p>
-                    <p className="mt-0.5 text-xs text-[#8aa0ae]">
-                      {t.id} · {t.category} · {t.department}
-                    </p>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${statusClass[t.status]}`}>{t.status}</span>
-                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold ${priorityClass[t.priority]}`}>{t.priority}</span>
-                  <button
-                    disabled={deletingId === t.id}
-                    onClick={() => handleDelete(t.id)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f7c5bd] bg-[#fff0ee] px-3 py-2 text-xs font-bold text-[#bd3c2d] hover:bg-[#fde8e5] disabled:opacity-60"
-                  >
-                    <Trash2 size={14} /> {deletingId === t.id ? 'Deleting…' : 'Delete'}
-                  </button>
+      <Card>
+        <CardHead title="All assigned issues" />
+        {assigned.length ? (
+          <div className="divide-y divide-[#edf1f3]">
+            {assigned.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{t.title}</p>
+                  <p className="mt-0.5 text-xs text-[#8aa0ae]">
+                    {t.id} · {t.category} · {t.department} · {t.time}
+                  </p>
                 </div>
-              ))}
-            </div>
-          </Card>
-        ))
-      ) : (
-        <Card>
+                <span className="shrink-0 rounded-full bg-[#edf5ff] px-2.5 py-1 text-[11px] font-bold text-[#2563a8]">{t.assignee}</span>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${statusClass[t.status]}`}>{t.status}</span>
+                <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold ${priorityClass[t.priority]}`}>{t.priority}</span>
+                <button
+                  disabled={deletingId === t.id}
+                  onClick={() => handleDelete(t.id)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f7c5bd] bg-[#fff0ee] px-3 py-2 text-xs font-bold text-[#bd3c2d] hover:bg-[#fde8e5] disabled:opacity-60"
+                >
+                  <Trash2 size={14} /> {deletingId === t.id ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
           <Empty title="No assigned issues yet" text="Once a technician is assigned a ticket, it will show up here." />
-        </Card>
-      )}
+        )}
+      </Card>
+
     </Page>
   )
 }
