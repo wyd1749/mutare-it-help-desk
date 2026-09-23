@@ -33,6 +33,15 @@ import {
 // assignments and status changes show up without anyone reloading.
 const POLL_INTERVAL_MS = 5000
 
+// Time-of-day greeting based on the viewer's local clock:
+// 00:00–11:59 → Good morning, 12:00–16:59 → Good afternoon, 17:00–23:59 → Good evening
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 // Supabase calls should never hang forever — a stuck request should surface
 // as a real, retryable error instead of an endless spinner.
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -358,7 +367,7 @@ function EmployeeOverview({
   return (
     <Page
       title="How can we help today?"
-      eyebrow={`Good morning, ${user.name.split(' ')[0]}`}
+      eyebrow={`${getGreeting()}, ${user.name.split(' ')[0]}`}
       sub="Report an IT issue and our team will get right on it."
       action={
         <button onClick={() => go('New request')} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#24769f] px-5 text-sm font-bold text-white">
@@ -891,7 +900,7 @@ function AdminQueue({
   return (
     <Page
       title="Service desk overview"
-      eyebrow={`Good morning, ${user.name.split(' ')[0]}`}
+      eyebrow={`${getGreeting()}, ${user.name.split(' ')[0]}`}
       sub="Review, assign, and resolve every request from one place."
       action={
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -1168,7 +1177,7 @@ function TechnicianWorkspace({
   return (
     <Page
       title="My assigned tasks"
-      eyebrow={`Good morning, ${user.name.split(' ')[0]}`}
+      eyebrow={`${getGreeting()}, ${user.name.split(' ')[0]}`}
       sub="Focus on the requests assigned to you and keep employees updated."
     >
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
