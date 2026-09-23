@@ -48,7 +48,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 const crestUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGPT%20Image%20Sep%2010%2C%202026%2C%2005_59_02%20PM-fpjbEi391Jxs3WlrCYOJWR7EJ3F9LH.png'
-type Role = 'employee' | 'admin' | 'technician'
+type Role = 'employee' | 'admin' | 'technician' | 'senior_technician'
 type Status = 'Open' | 'In progress' | 'Resolved'
 type Priority = 'Critical' | 'High' | 'Medium' | 'Low'
 type Ticket = { id: string; title: string; category: string; requester: string; department: string; time: string; priority: Priority; status: Status; assignee: string; description: string }
@@ -211,6 +211,8 @@ function Sidebar({
       ? [['Overview', LayoutDashboard], ['All requests', ClipboardList], ['Knowledge base', BookOpen], ['Team settings', Users], ['Reports', FileText]]
       : role === 'technician'
       ? [['My tasks', LayoutDashboard], ['Assigned requests', ClipboardList], ['Knowledge base', BookOpen], ['My profile', UserRound]]
+      : role === 'senior_technician'
+      ? [['Service desk monitor', LayoutDashboard]]
       : [['My overview', LayoutDashboard], ['My requests', ClipboardList], ['Help articles', BookOpen], ['My profile', UserRound]]
 
   return (
@@ -251,16 +253,18 @@ function Sidebar({
             </button>
           ))}
         </nav>
-        <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-[#d9b44a]/20 text-[#e6c65f]">
-            <HelpCircle size={18} />
+        {role !== 'senior_technician' && (
+          <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-[#d9b44a]/20 text-[#e6c65f]">
+              <HelpCircle size={18} />
+            </div>
+            <p className="text-sm font-semibold text-white">Need a hand?</p>
+            <p className="mt-1 text-xs leading-5 text-blue-100/55">Browse quick fixes and troubleshooting guides.</p>
+            <button onClick={() => setActive('Knowledge base')} className="mt-3 text-xs font-bold text-[#e6c65f]">
+              Browse articles <ArrowRight className="ml-1 inline" size={12} />
+            </button>
           </div>
-          <p className="text-sm font-semibold text-white">Need a hand?</p>
-          <p className="mt-1 text-xs leading-5 text-blue-100/55">Browse quick fixes and troubleshooting guides.</p>
-          <button onClick={() => setActive('Knowledge base')} className="mt-3 text-xs font-bold text-[#e6c65f]">
-            Browse articles <ArrowRight className="ml-1 inline" size={12} />
-          </button>
-        </div>
+        )}
       </aside>
     </>
   )
@@ -277,8 +281,22 @@ function Header({
   onLogout: () => void
   activities: Activity[]
 }) {
-  const role = user.role === 'Administrator' ? 'admin' : user.role === 'Technician' ? 'technician' : 'employee'
-  const label = role === 'admin' ? 'Administrator workspace' : role === 'technician' ? 'Technician workspace' : 'Employee workspace'
+  const role =
+    user.role === 'Administrator'
+      ? 'admin'
+      : user.role === 'Senior Technician'
+      ? 'senior_technician'
+      : user.role === 'Technician'
+      ? 'technician'
+      : 'employee'
+  const label =
+    role === 'admin'
+      ? 'Administrator workspace'
+      : role === 'senior_technician'
+      ? 'Service desk monitor'
+      : role === 'technician'
+      ? 'Technician workspace'
+      : 'Employee workspace'
   const name = user.name
   const sub = `${user.department} · ${user.email}`
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -577,6 +595,7 @@ function AdminWorkspace({
   setActive,
   employees,
   technicians,
+  seniorTechnicians,
   admins,
   onAddMember,
   onDeleteMember,
@@ -595,6 +614,7 @@ function AdminWorkspace({
   setActive: (x: string) => void
   employees: Employee[]
   technicians: Employee[]
+  seniorTechnicians: Employee[]
   admins: Employee[]
   onAddMember: (m: NewMember) => Promise<void>
   onDeleteMember: (id: string) => Promise<void>
@@ -614,6 +634,7 @@ function AdminWorkspace({
       <TeamSettings
         employees={employees}
         technicians={technicians}
+        seniorTechnicians={seniorTechnicians}
         admins={admins}
         onAddMember={onAddMember}
         onDeleteMember={onDeleteMember}
@@ -974,6 +995,88 @@ function TechnicianWorkspace({
   )
 }
 
+// Read-only monitor for the Senior Technician role: every currently-assigned
+// issue, grouped by the technician handling it. The only action available is
+// deleting a report — no reassignment, status changes, or other editing.
+function SeniorTechnicianMonitor({
+  tickets,
+  onDeleteTicket,
+}: {
+  tickets: Ticket[]
+  onDeleteTicket: (id: string) => Promise<void>
+}) {
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  const assigned = tickets.filter((t) => t.assignee !== 'Unassigned')
+  const byTechnician: [string, Ticket[]][] = []
+  assigned.forEach((t) => {
+    const group = byTechnician.find(([name]) => name === t.assignee)
+    if (group) group[1].push(t)
+    else byTechnician.push([t.assignee, [t]])
+  })
+  byTechnician.sort((a, b) => a[0].localeCompare(b[0]))
+
+  const handleDelete = async (id: string) => {
+    setError('')
+    if (!confirm('Delete this report? This action cannot be undone.')) return
+    setDeletingId(id)
+    try {
+      await onDeleteTicket(id)
+    } catch (err: any) {
+      setError(err?.message || 'Could not delete this report. Please try again.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  return (
+    <Page title="Service desk monitor" eyebrow="Senior technician" sub="A live view of every assigned issue, grouped by technician.">
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <Stat dark label="Assigned issues" value={String(assigned.length)} note="Currently in a technician's queue" />
+        <Stat label="Technicians with work" value={String(byTechnician.length)} note="Actively assigned" />
+        <Stat label="Resolved" value={String(assigned.filter((t) => t.status === 'Resolved').length)} note="Among assigned issues" />
+      </div>
+      {error && <p className="mb-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-sm font-semibold text-[#bd3c2d]">{error}</p>}
+      {byTechnician.length ? (
+        byTechnician.map(([name, list]) => (
+          <Card key={name}>
+            <CardHead title={name} />
+            <p className="-mt-3 mb-3 text-xs text-[#8aa0ae]">
+              {list.length} issue{list.length === 1 ? '' : 's'} assigned
+            </p>
+            <div className="divide-y divide-[#edf1f3]">
+              {list.map((t) => (
+                <div key={t.id} className="flex flex-wrap items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{t.title}</p>
+                    <p className="mt-0.5 text-xs text-[#8aa0ae]">
+                      {t.id} · {t.category} · {t.department}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${statusClass[t.status]}`}>{t.status}</span>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold ${priorityClass[t.priority]}`}>{t.priority}</span>
+                  <button
+                    disabled={deletingId === t.id}
+                    onClick={() => handleDelete(t.id)}
+                    className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f7c5bd] bg-[#fff0ee] px-3 py-2 text-xs font-bold text-[#bd3c2d] hover:bg-[#fde8e5] disabled:opacity-60"
+                  >
+                    <Trash2 size={14} /> {deletingId === t.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))
+      ) : (
+        <Card>
+          <Empty title="No assigned issues yet" text="Once a technician is assigned a ticket, it will show up here." />
+        </Card>
+      )}
+    </Page>
+  )
+}
+
 function KnowledgeBase({
   admin = false,
   articles,
@@ -1122,7 +1225,7 @@ function KnowledgeBase({
   )
 }
 
-type NewMember = { name: string; email: string; department: string; role: 'Employee' | 'Technician' | 'Administrator'; password: string }
+type NewMember = { name: string; email: string; department: string; role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician'; password: string }
 const emptyMember: NewMember = { name: '', email: '', department: 'Finance', role: 'Employee', password: '' }
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
@@ -1202,6 +1305,7 @@ function PeopleList({
 function TeamSettings({
   employees,
   technicians,
+  seniorTechnicians,
   admins,
   onAddMember,
   onDeleteMember,
@@ -1210,6 +1314,7 @@ function TeamSettings({
 }: {
   employees: Employee[]
   technicians: Employee[]
+  seniorTechnicians: Employee[]
   admins: Employee[]
   onAddMember: (m: NewMember) => Promise<void>
   onDeleteMember: (id: string) => Promise<void>
@@ -1276,7 +1381,7 @@ function TeamSettings({
   }
 
   return (
-    <Page title="Team settings" eyebrow="Administration" sub="Create accounts for employees, technicians and administrators, and manage service desk preferences.">
+    <Page title="Team settings" eyebrow="Administration" sub="Create accounts for employees, technicians, senior technicians and administrators, and manage service desk preferences.">
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="font-serif text-xl font-bold">Team accounts</h2>
@@ -1308,6 +1413,7 @@ function TeamSettings({
               <select value={form.role} onChange={(e) => setRole(e.target.value as NewMember['role'])} className="input">
                 <option>Employee</option>
                 <option>Technician</option>
+                <option>Senior Technician</option>
                 <option>Administrator</option>
               </select>
             </Field>
@@ -1353,6 +1459,12 @@ function TeamSettings({
         </Card>
       )}
       <PeopleList title="Administrators" note="Full access to every request, report and account." people={admins} onDeleteMember={onDeleteMember} />
+      <PeopleList
+        title="Senior technicians"
+        note="Read-only monitor of every assigned issue, with the ability to delete reports."
+        people={seniorTechnicians}
+        onDeleteMember={onDeleteMember}
+      />
       <PeopleList title="Employees" note="Can report issues and track their own requests." people={employees} onDeleteMember={onDeleteMember} />
       <PeopleList title="Technicians" note="Available for ticket assignment." people={technicians} onDeleteMember={onDeleteMember} />
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -1631,6 +1743,7 @@ export default function PageRoot() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [technicianUsers, setTechnicianUsers] = useState<Employee[]>([])
+  const [seniorTechnicians, setSeniorTechnicians] = useState<Employee[]>([])
   const [admins, setAdmins] = useState<Employee[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
   const [articles, setArticles] = useState<Article[]>([])
@@ -1640,7 +1753,14 @@ export default function PageRoot() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [profileMissing, setProfileMissing] = useState(false)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
-  const role = user?.role === 'Administrator' ? 'admin' : user?.role === 'Technician' ? 'technician' : 'employee'
+  const role =
+    user?.role === 'Administrator'
+      ? 'admin'
+      : user?.role === 'Senior Technician'
+      ? 'senior_technician'
+      : user?.role === 'Technician'
+      ? 'technician'
+      : 'employee'
   const [mobileOpen, setMobileOpen] = useState(false)
   const loggedInRef = useRef<string | null>(null)
 
@@ -1673,7 +1793,15 @@ export default function PageRoot() {
           setUser(profile)
           if (activeTabSetForUserId.current !== profile.id) {
             activeTabSetForUserId.current = profile.id
-            setActive(profile.role === 'Administrator' ? 'Overview' : profile.role === 'Technician' ? 'My tasks' : 'My overview')
+            setActive(
+              profile.role === 'Administrator'
+                ? 'Overview'
+                : profile.role === 'Senior Technician'
+                ? 'Service desk monitor'
+                : profile.role === 'Technician'
+                ? 'My tasks'
+                : 'My overview'
+            )
           }
         }
       } catch (err) {
@@ -1698,6 +1826,7 @@ export default function PageRoot() {
         setTickets([])
         setEmployees([])
         setTechnicianUsers([])
+        setSeniorTechnicians([])
         setAdmins([])
         setActivities([])
         setArticles([])
@@ -1730,6 +1859,7 @@ export default function PageRoot() {
         if (cancelled) return
         setEmployees(people.filter((p) => p.role === 'Employee'))
         setTechnicianUsers(people.filter((p) => p.role === 'Technician'))
+        setSeniorTechnicians(people.filter((p) => p.role === 'Senior Technician'))
         setAdmins(people.filter((p) => p.role === 'Administrator'))
         setTickets(dbTickets)
         setActivities(dbActivities)
@@ -1811,6 +1941,7 @@ export default function PageRoot() {
     const people = await dbFetchEmployees()
     setEmployees(people.filter((p) => p.role === 'Employee'))
     setTechnicianUsers(people.filter((p) => p.role === 'Technician'))
+    setSeniorTechnicians(people.filter((p) => p.role === 'Senior Technician'))
     setAdmins(people.filter((p) => p.role === 'Administrator'))
   }
 
@@ -1818,6 +1949,7 @@ export default function PageRoot() {
     await dbDeleteEmployee(id)
     setEmployees((prev) => prev.filter((p) => p.id !== id))
     setTechnicianUsers((prev) => prev.filter((p) => p.id !== id))
+    setSeniorTechnicians((prev) => prev.filter((p) => p.id !== id))
     setAdmins((prev) => prev.filter((p) => p.id !== id))
   }
 
@@ -1919,6 +2051,7 @@ export default function PageRoot() {
         setActive={go}
         employees={employees}
         technicians={technicianUsers}
+        seniorTechnicians={seniorTechnicians}
         admins={admins}
         onAddMember={addTeamMember}
         onDeleteMember={deleteTeamMemberHandler}
@@ -1931,6 +2064,10 @@ export default function PageRoot() {
         onSaveSettings={saveSettings}
       />
     )
+  } else if (role === 'senior_technician') {
+    // Read-only monitor: no assignment, status, or profile controls — just
+    // every assigned issue grouped by technician, with a delete action.
+    content = <SeniorTechnicianMonitor tickets={tickets} onDeleteTicket={deleteTicketHandler} />
   } else {
     content = (
       <TechnicianWorkspace

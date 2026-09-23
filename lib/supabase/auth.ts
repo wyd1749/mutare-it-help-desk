@@ -11,7 +11,7 @@ export async function createTeamMember(input: {
   name: string
   email: string
   department: string
-  role: 'Employee' | 'Technician' | 'Administrator'
+  role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician'
   password: string
 }): Promise<Employee> {
   const supabase = createClient()

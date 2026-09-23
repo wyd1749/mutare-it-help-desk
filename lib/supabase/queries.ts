@@ -57,10 +57,17 @@ export async function createEmployee(input: {
   name: string
   email: string
   department: string
-  role: 'Employee' | 'Technician' | 'Administrator'
+  role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician'
 }): Promise<Employee> {
   const supabase = createClient()
-  const prefix = input.role === 'Technician' ? 'TECH' : input.role === 'Administrator' ? 'CTO' : 'EMP'
+  const prefix =
+    input.role === 'Senior Technician'
+      ? 'SRTECH'
+      : input.role === 'Technician'
+      ? 'TECH'
+      : input.role === 'Administrator'
+      ? 'CTO'
+      : 'EMP'
   const id = `${prefix}-${Date.now().toString().slice(-6)}`
   const { data, error } = await supabase
     .from('employees')
