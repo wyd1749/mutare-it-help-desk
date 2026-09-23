@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
-const ROLES = ['Employee', 'Technician', 'Administrator'] as const
+const ROLES = ['Employee', 'Technician', 'Senior Technician', 'Administrator'] as const
 type RoleName = (typeof ROLES)[number]
-const ID_PREFIX: Record<RoleName, string> = { Employee: 'EMP', Technician: 'TECH', Administrator: 'ADM' }
+const ID_PREFIX: Record<RoleName, string> = { Employee: 'EMP', Technician: 'TECH', 'Senior Technician': 'SRTECH', Administrator: 'ADM' }
 const EMAIL_DOMAIN = '@mutarecity.org'
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status })
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const department = String(body?.department ?? '').trim() || 'ICT'
   const role = body?.role as RoleName
   if (!name || !email || !password) return fail('Name, email and password are required.', 400)
-  if (!ROLES.includes(role)) return fail('Role must be Employee, Technician or Administrator.', 400)
+  if (!ROLES.includes(role)) return fail('Role must be Employee, Technician, Senior Technician or Administrator.', 400)
   if (!email.endsWith(EMAIL_DOMAIN)) return fail(`Email must end with ${EMAIL_DOMAIN}.`, 400)
   if (password.length < 8) return fail('Password must be at least 8 characters.', 400)
 
