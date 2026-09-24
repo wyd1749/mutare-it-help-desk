@@ -1268,10 +1268,15 @@ function SeniorTechnicianMonitor({
       setActiveAlert(newest)
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
         const location = [newest.doorNumber, newest.department].filter(Boolean).join(' · ')
-        new Notification('Check the IT service monitor', {
-          body: `New issue assigned${location ? ` — ${location}` : ''}: ${newest.title}`,
-          tag: newest.id,
-        })
+        // Fired a beat after setActiveAlert rather than in the same tick —
+        // creating a Notification right as speech starts can leave some
+        // browsers (Chrome/Edge) with speechSynthesis stuck "paused".
+        setTimeout(() => {
+          new Notification('Check the IT service monitor', {
+            body: `New issue assigned${location ? ` — ${location}` : ''}: ${newest.title}`,
+            tag: newest.id,
+          })
+        }, 300)
       }
     } else {
       setActiveAlert((prev) => (prev && !currentIds.has(prev.id) ? null : prev))
@@ -1289,19 +1294,31 @@ function SeniorTechnicianMonitor({
     const location = [activeAlert.doorNumber, activeAlert.department].filter(Boolean).join(', ')
     const speakNext = () => {
       if (cancelled) return
+      // Chrome/Edge can leave the speech queue stuck "paused" after a
+      // notification, an alert(), or a tab focus change — reset it before
+      // every utterance instead of trusting it's in a clean state.
+      window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(
         `New issue. Assigned technician, please attend the issue. ${location}.`
       )
       utterance.rate = 0.95
-      utterance.onend = () => {
+      const scheduleNext = () => {
         if (cancelled) return
         setTimeout(speakNext, 2500)
       }
+      utterance.onend = scheduleNext
+      utterance.onerror = scheduleNext
       window.speechSynthesis.speak(utterance)
     }
     speakNext()
+    // Some browsers silently pause a long-lived speech queue after ~15s;
+    // nudging resume() periodically is the standard workaround.
+    const watchdog = setInterval(() => {
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume()
+    }, 4000)
     return () => {
       cancelled = true
+      clearInterval(watchdog)
       window.speechSynthesis.cancel()
     }
   }, [activeAlert])
