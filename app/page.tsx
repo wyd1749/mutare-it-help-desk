@@ -1229,12 +1229,63 @@ function SeniorTechnicianMonitor({
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [activeAlert, setActiveAlert] = useState<Ticket | null>(null)
+  const knownIds = useRef<Set<string> | null>(null)
 
   // `tickets` already arrives newest-first (fetchTickets orders by
   // reported_at descending), so filtering preserves that recency order —
   // the most recently reported assigned issue is always first in the list.
   const assigned = tickets.filter((t) => t.assignee !== 'Unassigned')
   const technicianCount = new Set(assigned.map((t) => t.assignee)).size
+  const assignedIds = assigned.map((t) => t.id).join(',')
+
+  // Detect the newest assigned ticket the senior technician hasn't seen yet.
+  // Only ever announce that one ticket — not the whole board — and don't
+  // announce anything already on the board when this monitor first loads.
+  useEffect(() => {
+    const currentIds = new Set(assigned.map((t) => t.id))
+    if (knownIds.current === null) {
+      knownIds.current = currentIds
+      return
+    }
+    const newOnes = assigned.filter((t) => !knownIds.current!.has(t.id))
+    if (newOnes.length) {
+      // `assigned` is newest-first, so the first entry is the most recent.
+      setActiveAlert(newOnes[0])
+    } else {
+      setActiveAlert((prev) => (prev && !currentIds.has(prev.id) ? null : prev))
+    }
+    knownIds.current = currentIds
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignedIds])
+
+  // Speak the active alert on a loop until the senior technician stops it
+  // (or it's removed because the ticket was deleted/unassigned).
+  useEffect(() => {
+    if (!activeAlert) return
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+    let cancelled = false
+    const location = [activeAlert.doorNumber, activeAlert.department].filter(Boolean).join(', ')
+    const speakNext = () => {
+      if (cancelled) return
+      const utterance = new SpeechSynthesisUtterance(
+        `New issue. Assigned technician, please attend the issue. ${location}.`
+      )
+      utterance.rate = 0.95
+      utterance.onend = () => {
+        if (cancelled) return
+        setTimeout(speakNext, 2500)
+      }
+      window.speechSynthesis.speak(utterance)
+    }
+    speakNext()
+    return () => {
+      cancelled = true
+      window.speechSynthesis.cancel()
+    }
+  }, [activeAlert])
+
+  const stopAlert = () => setActiveAlert(null)
 
   const handleDelete = async (id: string) => {
     setError('')
@@ -1256,6 +1307,25 @@ function SeniorTechnicianMonitor({
         <Stat label="Technicians with work" value={String(technicianCount)} note="Actively assigned" />
         <Stat label="Resolved" value={String(assigned.filter((t) => t.status === 'Resolved').length)} note="Among assigned issues" />
       </div>
+      {activeAlert && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#f7c5bd] bg-[#fff0ee] p-4">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-bold text-[#bd3c2d]">
+              <Bell className="animate-pulse" size={16} /> New issue announcing
+            </p>
+            <p className="mt-1 truncate text-sm font-bold">{activeAlert.title}</p>
+            <p className="text-xs text-[#8aa0ae]">
+              {[activeAlert.doorNumber, activeAlert.department].filter(Boolean).join(' · ')} · {activeAlert.assignee}
+            </p>
+          </div>
+          <button
+            onClick={stopAlert}
+            className="shrink-0 rounded-lg border border-[#f7c5bd] bg-white px-3 py-1.5 text-xs font-bold text-[#bd3c2d] hover:bg-[#fde8e5]"
+          >
+            Stop
+          </button>
+        </div>
+      )}
       {error && <p className="mb-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-sm font-semibold text-[#bd3c2d]">{error}</p>}
       <Card>
         <CardHead title="All assigned issues" />
