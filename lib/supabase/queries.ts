@@ -16,6 +16,7 @@ export type Ticket = {
   category: string
   requester: string
   department: string
+  doorNumber: string
   time: string
   priority: 'Critical' | 'High' | 'Medium' | 'Low'
   status: 'Open' | 'In progress' | 'Resolved'
@@ -94,7 +95,7 @@ export async function fetchTickets(): Promise<Ticket[]> {
   const { data, error } = await supabase
     .from('tickets')
     .select(
-      'id,title,category,department,reported_at,priority,status,description,' +
+      'id,title,category,department,door_number,reported_at,priority,status,description,' +
         'requester:employees!tickets_requester_id_fkey(name),' +
         'assignee:employees!tickets_assignee_id_fkey(name)'
     )
@@ -106,6 +107,7 @@ export async function fetchTickets(): Promise<Ticket[]> {
     category: row.category,
     requester: row.requester?.name ?? 'Unknown',
     department: row.department,
+    doorNumber: row.door_number ?? '',
     time: formatRelativeTime(row.reported_at),
     priority: row.priority,
     status: row.status,
@@ -126,6 +128,7 @@ export async function createTicket(
     title: string
     category: string
     department: string
+    doorNumber: string
     priority: Ticket['priority']
     description: string
   },
@@ -146,12 +149,13 @@ export async function createTicket(
         category: input.category,
         requester_id: requesterId,
         department: input.department,
+        door_number: input.doorNumber,
         priority: input.priority,
         status: assigneeId ? 'In progress' : 'Open',
         assignee_id: assigneeId ?? null,
         description: input.description,
       })
-      .select('id,title,category,department,reported_at,priority,status,description')
+      .select('id,title,category,department,door_number,reported_at,priority,status,description')
       .single()
     if (!error) {
       return {
@@ -160,6 +164,7 @@ export async function createTicket(
         category: data.category,
         requester: '',
         department: data.department,
+        doorNumber: data.door_number ?? '',
         time: formatRelativeTime(data.reported_at),
         priority: data.priority,
         status: data.status,

@@ -40,6 +40,7 @@ export interface Database {
           category: string
           requester_id: string | null
           department: string
+          door_number: string
           reported_at: string
           priority: TicketPriority
           status: TicketStatus
@@ -53,6 +54,7 @@ export interface Database {
           category: string
           requester_id?: string | null
           department: string
+          door_number?: string
           reported_at?: string
           priority?: TicketPriority
           status?: TicketStatus

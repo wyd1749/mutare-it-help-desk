@@ -60,7 +60,7 @@ const crestUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGP
 type Role = 'employee' | 'admin' | 'technician' | 'senior_technician'
 type Status = 'Open' | 'In progress' | 'Resolved'
 type Priority = 'Critical' | 'High' | 'Medium' | 'Low'
-type Ticket = { id: string; title: string; category: string; requester: string; department: string; time: string; priority: Priority; status: Status; assignee: string; description: string }
+type Ticket = { id: string; title: string; category: string; requester: string; department: string; doorNumber: string; time: string; priority: Priority; status: Status; assignee: string; description: string }
 type Employee = { id: string; name: string; email: string; department: string; role: string; status: 'Active' | 'Invited' }
 type Activity = { id: string; user: string; action: string; time: string }
 
@@ -413,12 +413,13 @@ function NewRequest({
   onSubmit,
 }: {
   onBack: () => void
-  onSubmit: (t: { title: string; category: string; priority: Priority; description: string }) => Promise<Ticket>
+  onSubmit: (t: { title: string; category: string; doorNumber: string; priority: Priority; description: string }) => Promise<Ticket>
 }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<Priority>('Medium')
   const [category, setCategory] = useState('Network & connectivity')
+  const [doorNumber, setDoorNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState<Ticket | null>(null)
@@ -440,11 +441,11 @@ function NewRequest({
     )
 
   const submit = async () => {
-    if (!title || !description) return
+    if (!title || !description || !doorNumber) return
     setError('')
     setSubmitting(true)
     try {
-      const ticket = await onSubmit({ title, category, priority, description })
+      const ticket = await onSubmit({ title, category, doorNumber, priority, description })
       setCreated(ticket)
     } catch (err: any) {
       setError(err?.message || 'Could not submit your request. Please try again.')
@@ -482,6 +483,9 @@ function NewRequest({
               <option>Low</option>
             </select>
           </Field>
+          <Field label="Door number">
+            <input value={doorNumber} onChange={(e) => setDoorNumber(e.target.value)} placeholder="e.g. Door 14, Room 203" className="input" />
+          </Field>
           <Field label="Describe the issue" full>
             <textarea
               value={description}
@@ -498,7 +502,7 @@ function NewRequest({
         </div>
         {error && <p className="mt-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{error}</p>}
         <button
-          disabled={!title || !description || submitting}
+          disabled={!title || !description || !doorNumber || submitting}
           onClick={submit}
           className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#24769f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -512,6 +516,7 @@ function NewRequest({
 type NewAdminTicketInput = {
   title: string
   category: string
+  doorNumber: string
   priority: Priority
   description: string
   requesterId: string
@@ -547,6 +552,7 @@ function NewAdminTicket({
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<Priority>('Medium')
   const [category, setCategory] = useState('Network & connectivity')
+  const [doorNumber, setDoorNumber] = useState('')
   const [requesterId, setRequesterId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -572,6 +578,7 @@ function NewAdminTicket({
               setDescription('')
               setPriority('Medium')
               setCategory('Network & connectivity')
+              setDoorNumber('')
               setRequesterId('')
               setAssigneeId('')
             }}
@@ -594,6 +601,7 @@ function NewAdminTicket({
       const ticket = await onSubmit({
         title,
         category,
+        doorNumber,
         priority,
         description,
         requesterId,
@@ -650,6 +658,9 @@ function NewAdminTicket({
               <option>Low</option>
             </select>
           </Field>
+          <Field label="Door number">
+            <input value={doorNumber} onChange={(e) => setDoorNumber(e.target.value)} placeholder="e.g. Door 14, Room 203" className="input" />
+          </Field>
           <Field label="Assign to (optional)" full>
             <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="input">
               <option value="">Leave unassigned</option>
@@ -697,6 +708,7 @@ function RequestDetail({ ticket, onBack }: { ticket: Ticket; onBack: () => void 
           <h1 className="font-serif text-3xl font-bold">{ticket.title}</h1>
           <p className="mt-2 text-sm text-[#71899a]">
             Reported {ticket.time} · {ticket.department}
+            {ticket.doorNumber ? ` · ${ticket.doorNumber}` : ''}
           </p>
         </div>
         <span className={`w-fit rounded-full px-3 py-1.5 text-xs font-bold ${statusClass[ticket.status]}`}>{ticket.status}</span>
@@ -1054,6 +1066,11 @@ function TicketDetail({
           <p className="mt-2 text-sm text-[#71899a]">
             Submitted by {draft.requester} · {draft.department} · {draft.time}
           </p>
+          {draft.doorNumber && (
+            <p className="mt-1 text-sm font-bold text-[#24769f]">
+              <ClipboardList className="mr-1.5 inline" size={14} /> {draft.doorNumber}
+            </p>
+          )}
         </div>
         <span className={`w-fit rounded-full px-3 py-1.5 text-xs font-bold ${statusClass[draft.status]}`}>{draft.status}</span>
       </div>
@@ -1903,7 +1920,7 @@ function TicketRow({ t, onClick, admin = false }: { t: Ticket; onClick: () => vo
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-[#31546b]">{t.title}</p>
         <p className="mt-1 text-xs text-[#8aa0ae]">
-          {t.id} · {t.category} {admin && `· ${t.requester}`}
+          {t.id} · {t.category} {t.doorNumber && `· ${t.doorNumber}`} {admin && `· ${t.requester}`}
         </p>
       </div>
       <div className="hidden text-right sm:block">
@@ -2102,7 +2119,7 @@ export default function PageRoot() {
     if (!user) loggedInRef.current = null
   }, [user?.id])
 
-  const submitNewTicket = async (input: { title: string; category: string; priority: Priority; description: string }): Promise<Ticket> => {
+  const submitNewTicket = async (input: { title: string; category: string; doorNumber: string; priority: Priority; description: string }): Promise<Ticket> => {
     if (!user) throw new Error('You are signed out. Please sign in again.')
     const created = await dbCreateTicket({ ...input, department: user.department }, user.id)
     const withRequester: Ticket = { ...created, requester: user.name }
@@ -2120,7 +2137,7 @@ export default function PageRoot() {
     // Single insert carries the assignee straight into the row — no
     // separate update-by-name step that can silently miss.
     const created = await dbCreateTicket(
-      { title: input.title, category: input.category, priority: input.priority, description: input.description, department: requester.department },
+      { title: input.title, category: input.category, doorNumber: input.doorNumber, priority: input.priority, description: input.description, department: requester.department },
       requester.id,
       assignee?.id
     )
