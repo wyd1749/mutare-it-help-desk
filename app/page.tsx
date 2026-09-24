@@ -1230,7 +1230,20 @@ function SeniorTechnicianMonitor({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [activeAlert, setActiveAlert] = useState<Ticket | null>(null)
+  const [notifyPermission, setNotifyPermission] = useState<NotificationPermission | 'unsupported'>('unsupported')
   const knownIds = useRef<Set<string> | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifyPermission(Notification.permission)
+    }
+  }, [])
+
+  const enableDesktopNotifications = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    const result = await Notification.requestPermission()
+    setNotifyPermission(result)
+  }
 
   // `tickets` already arrives newest-first (fetchTickets orders by
   // reported_at descending), so filtering preserves that recency order —
@@ -1251,7 +1264,15 @@ function SeniorTechnicianMonitor({
     const newOnes = assigned.filter((t) => !knownIds.current!.has(t.id))
     if (newOnes.length) {
       // `assigned` is newest-first, so the first entry is the most recent.
-      setActiveAlert(newOnes[0])
+      const newest = newOnes[0]
+      setActiveAlert(newest)
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        const location = [newest.doorNumber, newest.department].filter(Boolean).join(' · ')
+        new Notification('Check the IT service monitor', {
+          body: `New issue assigned${location ? ` — ${location}` : ''}: ${newest.title}`,
+          tag: newest.id,
+        })
+      }
     } else {
       setActiveAlert((prev) => (prev && !currentIds.has(prev.id) ? null : prev))
     }
@@ -1301,7 +1322,23 @@ function SeniorTechnicianMonitor({
   }
 
   return (
-    <Page title="Service desk monitor" eyebrow="Senior technician" sub="A live view of every assigned issue, most recent first.">
+    <Page
+      title="Service desk monitor"
+      eyebrow="Senior technician"
+      sub="A live view of every assigned issue, most recent first."
+      action={
+        notifyPermission === 'default' ? (
+          <button
+            onClick={enableDesktopNotifications}
+            className="rounded-lg border border-[#dbe6ec] bg-white px-3 py-1.5 text-xs font-bold text-[#2b3a44] hover:bg-[#f4f8fa]"
+          >
+            <Bell className="mr-1.5 inline" size={13} /> Enable desktop notifications
+          </button>
+        ) : notifyPermission === 'denied' ? (
+          <p className="text-xs text-[#8aa0ae]">Desktop notifications blocked — allow them in the browser's site settings.</p>
+        ) : undefined
+      }
+    >
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <Stat dark label="Assigned issues" value={String(assigned.length)} note="Currently in a technician's queue" />
         <Stat label="Technicians with work" value={String(technicianCount)} note="Actively assigned" />
