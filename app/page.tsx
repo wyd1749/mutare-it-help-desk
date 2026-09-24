@@ -1266,7 +1266,7 @@ function SeniorTechnicianMonitor({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{t.title}</p>
                   <p className="mt-0.5 text-xs text-[#8aa0ae]">
-                    {t.id} · {t.category} · {t.department} · {t.time}
+                    {t.id} · {t.category} · {t.department} {t.doorNumber && `· ${t.doorNumber}`} · {t.time}
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-[#edf5ff] px-2.5 py-1 text-[11px] font-bold text-[#2563a8]">{t.assignee}</span>
