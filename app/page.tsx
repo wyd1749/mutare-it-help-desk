@@ -7,6 +7,7 @@ import {
   Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, Trash2, UserRound, Users, X,
 } from 'lucide-react'
 import { isSupabaseConfigured } from '@/lib/supabase/client'
+import { subscribeToPush, type PushStatus } from '@/lib/push'
 import { signIn, signOut, fetchCurrentEmployee, onAuthStateChange, createTeamMember } from '@/lib/supabase/auth'
 import {
   fetchEmployees as dbFetchEmployees,
@@ -1231,11 +1232,13 @@ function SeniorTechnicianMonitor({
   const [error, setError] = useState('')
   const [activeAlert, setActiveAlert] = useState<Ticket | null>(null)
   const [notifyPermission, setNotifyPermission] = useState<NotificationPermission | 'unsupported'>('unsupported')
+  const [pushStatus, setPushStatus] = useState<PushStatus | 'idle'>('idle')
   const knownIds = useRef<Set<string> | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifyPermission(Notification.permission)
+      if (Notification.permission === 'granted') subscribeToPush().then(setPushStatus)
     }
   }, [])
 
@@ -1243,6 +1246,7 @@ function SeniorTechnicianMonitor({
     if (typeof window === 'undefined' || !('Notification' in window)) return
     const result = await Notification.requestPermission()
     setNotifyPermission(result)
+    if (result === 'granted') setPushStatus(await subscribeToPush())
   }
 
   // `tickets` already arrives newest-first (fetchTickets orders by
@@ -1353,6 +1357,10 @@ function SeniorTechnicianMonitor({
           </button>
         ) : notifyPermission === 'denied' ? (
           <p className="text-xs text-[#8aa0ae]">Desktop notifications blocked — allow them in the browser's site settings.</p>
+        ) : pushStatus === 'subscribed' ? (
+          <p className="text-xs text-[#8aa0ae]">Background alerts on</p>
+        ) : pushStatus === 'failed' ? (
+          <p className="text-xs text-[#bd3c2d]">Background alerts couldn't be turned on</p>
         ) : undefined
       }
     >
