@@ -881,12 +881,19 @@ function AdminQueue({
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('All')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const showUnassigned = () => {
+    setQuery('')
+    setFilter('Unassigned')
+    setTimeout(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
 
   const filtered = useMemo(
     () =>
       tickets.filter(
         (t) =>
-          (filter === 'All' || t.status === filter) &&
+          (filter === 'All' || (filter === 'Unassigned' ? t.assignee === 'Unassigned' : t.status === filter)) &&
           `${t.id} ${t.title} ${t.requester} ${t.department}`.toLowerCase().includes(query.toLowerCase())
       ),
     [tickets, filter, query]
@@ -927,11 +934,12 @@ function AdminQueue({
       }
     >
       <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat dark label="Open requests" value={String(tickets.filter((t) => t.status !== 'Resolved').length)} note={`${tickets.filter((t) => t.assignee === 'Unassigned').length} unassigned`} />
+        <Stat dark label="Open requests" value={String(tickets.filter((t) => t.status !== 'Resolved').length)} note={`${tickets.filter((t) => t.assignee === 'Unassigned').length} unassigned`} onNoteClick={showUnassigned} />
         <Stat label="High priority" value={String(tickets.filter((t) => t.priority === 'High' || t.priority === 'Critical').length)} note="Requires attention today" />
         <Stat label="Resolved" value={String(tickets.filter((t) => t.status === 'Resolved').length)} note="All time" />
         <Stat label="Technicians" value={String(technicians.length)} note="Available for assignment" />
       </div>
+      <div ref={listRef} className="scroll-mt-6">
       <Card>
         <div className="flex flex-col gap-4 border-b border-[#edf1f3] p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -953,6 +961,7 @@ function AdminQueue({
               <option>Open</option>
               <option>In progress</option>
               <option>Resolved</option>
+              <option>Unassigned</option>
             </select>
           </div>
         </div>
@@ -962,6 +971,7 @@ function AdminQueue({
           ))}
         </div>
       </Card>
+      </div>
     </Page>
   )
 }
@@ -2033,12 +2043,34 @@ function CardHead({ title, link, onClick }: { title: string; link?: string; onCl
   )
 }
 
-function Stat({ label, value, note, dark = false }: { label: string; value: string; note: string; dark?: boolean }) {
+function Stat({
+  label,
+  value,
+  note,
+  dark = false,
+  onNoteClick,
+}: {
+  label: string
+  value: string
+  note: string
+  dark?: boolean
+  onNoteClick?: () => void
+}) {
   return (
     <div className={`rounded-2xl p-5 ${dark ? 'bg-[#102f4a] text-white' : 'border border-[#dce7ed] bg-white'}`}>
       <p className={`text-xs font-semibold uppercase tracking-wider ${dark ? 'text-blue-100/60' : 'text-[#8aa0ae]'}`}>{label}</p>
       <p className="mt-3 text-3xl font-bold">{value}</p>
-      <p className={`mt-1 text-xs ${dark ? 'text-blue-100/60' : 'text-[#71899a]'}`}>{note}</p>
+      {onNoteClick ? (
+        <button
+          type="button"
+          onClick={onNoteClick}
+          className={`mt-1 text-xs font-semibold underline underline-offset-2 ${dark ? 'text-[#e6c65f] hover:text-white' : 'text-[#24769f] hover:text-[#1d6188]'}`}
+        >
+          {note}
+        </button>
+      ) : (
+        <p className={`mt-1 text-xs ${dark ? 'text-blue-100/60' : 'text-[#71899a]'}`}>{note}</p>
+      )}
     </div>
   )
 }
