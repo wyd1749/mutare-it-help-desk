@@ -1288,6 +1288,89 @@ function TechnicianWorkspace({
 // issue, most recent first, with the technician handling it shown inline.
 // The only action available is deleting a report — no reassignment, status
 // changes, or other editing.
+// The voice only reads the issue title when it looks like understandable
+// English or Shona (or a mix of both, which is common at work). Other
+// languages, keyboard mashing ("asdfgh") and one-word noise are skipped, so
+// the announcement stops after the department instead of mispronouncing
+// gibberish. (The full title is still shown on screen.)
+const KNOWN_ENGLISH_WORDS = new Set<string>(
+  (
+    'a an the and or but if so of to in on at for with without from by as up down out off over again still ' +
+    'is are was were be been being am has have had do does did done not no cannot cant can could will wont would should ' +
+    'my our your his her their its it this that these those there here what when where why how who ' +
+    'i we you he she they me us them all any some every each one two three new old very too also just only ' +
+    'please help need needs needed want wants get gets getting got keep keeps keeping stop stopped stops start started ' +
+    'issue issues problem problems error errors fault faulty broken break breaks fix fixed repair repairs ' +
+    'work works working worked fail fails failed failing failure unable able connect connected connecting connection ' +
+    'disconnected disconnect lost missing request requests install installed installing setup set change changed ' +
+    'open opens opening close closed closing show shows showing display displayed appear appears ' +
+    'slow slowly fast freeze freezing frozen hang hangs hanging crash crashes crashed restart restarting reboot boot ' +
+    'shutdown shut turn turns turning switch switched power battery charge charger charging plug plugged ' +
+    'computer computers pc pcs desktop laptop laptops notebook tablet phone phones telephone mobile ' +
+    'printer printers printing print printed scanner scan scanning copier photocopier toner ink paper jam jammed cartridge ' +
+    'screen screens monitor monitors keyboard mouse cable cables hdmi usb port ' +
+    'network networks internet wifi wi fi wireless lan vpn router modem signal online offline website web browser chrome edge ' +
+    'email emails mail outlook inbox send sending sent receive receiving received attachment ' +
+    'password passwords login log logon account accounts locked lock unlock reset access denied permission permissions ' +
+    'user users username profile security virus malware antivirus ' +
+    'software program programs application applications app apps system systems server servers database data file files folder folders ' +
+    'windows office word excel powerpoint sage pastel update updates upgrade license licence ' +
+    'drive disk storage memory space backup backups share shared sharing ' +
+    'sound audio speaker speakers microphone camera cctv projector ups ' +
+    'ticket tickets service services support technician engineer ' +
+    'office room door floor building reception department counter desk ' +
+    'system down up running run runs ' +
+    'blue black white blank flickering flicker noise noisy hot overheating ' +
+    'wrong incorrect correct unavailable available offline online ' +
+    'urgent urgently asap today now tomorrow morning'
+  ).split(' ')
+)
+
+// Common Shona words used in fault reports. Shona spelling is phonetic, so the
+// same tokenising works. Add more words here whenever a real title is skipped.
+const KNOWN_SHONA_WORDS = new Set<string>(
+  (
+    'ndi ndiri ndini ini iwe iye isu imi ivo iyi iyo ichi icho izvi izvo apa apo pano ipapo ikoko ' +
+    'uye asi kana nekuti nokuti pane kune hapana handina hatina haisi hazvisi zvose dzose dzese chete ' +
+    'zvakare zvino nhasi mangwanani mangwani masikati manheru nguva kare kwenguva ' +
+    'yangu wangu changu zvangu rangu vangu yedu wedu yako wako yake wake yenyu yavo ' +
+    'ndapota tapota ndokumbirawo ndibatsirei ndibatsireiwo batsira kubatsira ndinoda ndoda tinoda kuda ' +
+    'dambudziko matambudziko chikanganiso zvikanganiso basa ' +
+    'kushanda shanda hairi hazvishande haishande yatadza yakatadza ndatadza tatadza kutadza ' +
+    'yaora yakaora kuora yakakuvara kukuvara yamira yakamira kumira yadzima yakadzima yakadzimwa kudzima ' +
+    'inononoka yakanonoka kunonoka kupinda kubuda kuvhura kuvhara kutanga yatanga kubatana kubatanidza ' +
+    'kugadzirisa kugadzira gadzirisa gadzirai ndigadzirisirei kuona kunzwa kutumira kugamuchira ' +
+    'kudhinda kudhindisa kubvisa kuisa kuchinja yarasika kurasika ' +
+    'komputa kompyuta kompiyuta printa muchina michina waya magetsi bhatiri chaja nhare runhare sikirini ' +
+    'mausi kiibhodhi pasiwedhi akaundi sisitimu hofisi kamuri rumu musuo gonhi tsamba faira ' +
+    'vashandi mushandi dhipatimendi'
+  ).split(' ')
+)
+
+// Stems of very common Shona verbs, so every inflection counts
+// (shanda / haishande / vashandi, tadza / ndatadza, ...).
+const SHONA_STEMS = ['shand', 'tadz', 'kaip', 'nonok', 'dzim', 'kuvhar', 'kuvhur', 'kupind', 'batsir', 'gadziris', 'dambudz']
+
+function isKnownWord(token: string): boolean {
+  const matches = (t: string) =>
+    KNOWN_ENGLISH_WORDS.has(t) || KNOWN_SHONA_WORDS.has(t) || SHONA_STEMS.some((stem) => t.includes(stem))
+  if (matches(token)) return true
+  // Shona glues small prefixes onto words: muhofisi (in the office),
+  // nemagetsi (with power), musystem (in the system).
+  const prefix = ['mu', 'ku', 'pa', 'ne', 'no'].find((p) => token.startsWith(p) && token.length - p.length >= 4)
+  return prefix ? matches(token.slice(prefix.length)) : false
+}
+
+function isSpeakableIssue(title: string): boolean {
+  const tokens = title
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .match(/[a-z]+/g)
+  if (!tokens) return false
+  const known = tokens.filter(isKnownWord).length
+  return known >= 1 && known / tokens.length >= 0.5
+}
+
 function SeniorTechnicianMonitor({
   tickets,
   onDeleteTicket,
@@ -1369,7 +1452,7 @@ function SeniorTechnicianMonitor({
       'New issue. Assigned technician, please attend the issue.',
       activeAlert.doorNumber && `Location: ${clean(activeAlert.doorNumber)}.`,
       activeAlert.department && `Department: ${clean(activeAlert.department)}.`,
-      activeAlert.title && `Issue: ${clean(activeAlert.title)}.`,
+      activeAlert.title && isSpeakableIssue(activeAlert.title) && `Issue: ${clean(activeAlert.title)}.`,
     ]
       .filter(Boolean)
       .join(' ')
