@@ -933,6 +933,11 @@ function AdminQueue({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [showFreeTechs, setShowFreeTechs] = useState(false)
+
+  // A technician is free when no unresolved ticket is assigned to them.
+  const busyNames = new Set(tickets.filter((t) => t.status !== 'Resolved' && t.assignee !== 'Unassigned').map((t) => t.assignee))
+  const freeTechnicians = technicians.filter((t) => !busyNames.has(t.name))
 
   const showUnassigned = () => {
     setQuery('')
@@ -991,9 +996,10 @@ function AdminQueue({
         <Stat dark label="Open requests" value={String(tickets.filter((t) => t.status !== 'Resolved').length)} note={`${tickets.filter((t) => t.assignee === 'Unassigned').length} unassigned`} onNoteClick={showUnassigned} />
         <Stat label="High priority" value={String(tickets.filter((t) => t.priority === 'High' || t.priority === 'Critical').length)} note="Requires attention today" />
         <Stat label="Resolved" value={String(tickets.filter((t) => t.status === 'Resolved').length)} note="All time" />
-        <Stat label="Technicians" value={String(technicians.length)} note="Available for assignment" />
+        <Stat label="Technicians available" value={String(freeTechnicians.length)} note={`${freeTechnicians.length} of ${technicians.length} free · View`} onNoteClick={() => setShowFreeTechs(true)} />
       </div>
       {showPreview && <ReportPreview tickets={tickets} onClose={() => setShowPreview(false)} />}
+      {showFreeTechs && <AvailableTechnicians free={freeTechnicians} total={technicians.length} onClose={() => setShowFreeTechs(false)} />}
       <div ref={listRef} className="scroll-mt-6">
       <Card>
         <div className="flex flex-col gap-4 border-b border-[#edf1f3] p-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1598,6 +1604,11 @@ function KnowledgeBase({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [formError, setFormError] = useState('')
   const [reading, setReading] = useState<Article | null>(null)
+  const readRef = useRef<HTMLDivElement>(null)
+  const openReader = (a: Article) => {
+    setReading(a)
+    setTimeout(() => readRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
 
   const startNew = () => {
     setEditingId('new')
@@ -1669,9 +1680,14 @@ function KnowledgeBase({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => (admin ? startEdit(a) : setReading(a))} className="rounded-lg border border-[#dce7ed] px-3 py-2 text-xs font-bold text-[#31546b]">
-                    {admin ? 'Edit' : 'Read'}
+                  <button onClick={() => openReader(a)} className="rounded-lg border border-[#dce7ed] px-3 py-2 text-xs font-bold text-[#31546b]">
+                    Read
                   </button>
+                  {admin && (
+                    <button onClick={() => startEdit(a)} className="rounded-lg border border-[#dce7ed] px-3 py-2 text-xs font-bold text-[#31546b]">
+                      Edit
+                    </button>
+                  )}
                   {admin && onDelete && (
                     <button
                       disabled={deletingId === a.id}
@@ -1690,7 +1706,7 @@ function KnowledgeBase({
           )}
         </div>
         {reading && (
-          <div className="mt-5 rounded-xl border border-[#bcd8e5] bg-[#f1f9fc] p-5 text-sm text-[#31546b]">
+          <div ref={readRef} className="mt-5 rounded-xl border border-[#bcd8e5] bg-[#f1f9fc] p-5 text-sm text-[#31546b]">
             <div className="flex items-start justify-between gap-3">
               <strong>{reading.title}</strong>
               <button onClick={() => setReading(null)} className="text-xs font-bold text-[#24769f]">
@@ -2065,6 +2081,52 @@ function BreakdownBar({ title, items }: { title: string; items: { label: string;
             {i.label} <strong className="text-[#2b3a44]">{i.count}</strong>
           </span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function AvailableTechnicians({ free, total, onClose }: { free: Employee[]; total: number; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b2236]/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-serif text-lg font-bold">Available technicians</h2>
+            <p className="mt-1 text-xs text-[#8aa0ae]">
+              {free.length} of {total} technicians have no open ticket assigned.
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-[#8aa0ae] hover:bg-[#f4f8fa]" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="mt-4 divide-y divide-[#edf1f3]">
+          {free.length ? (
+            free.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 py-3">
+                <div className="flex size-9 items-center justify-center rounded-full bg-[#e3f4ea] text-xs font-bold text-[#2e9d5b]">
+                  {t.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold">{t.name}</p>
+                  <p className="truncate text-xs text-[#8aa0ae]">{t.department} · {t.email}</p>
+                </div>
+                <span className="rounded-full bg-[#e3f4ea] px-2 py-1 text-[11px] font-bold text-[#2e9d5b]">Free</span>
+              </div>
+            ))
+          ) : (
+            <p className="py-6 text-center text-sm text-[#8aa0ae]">Every technician currently has open work.</p>
+          )}
+        </div>
       </div>
     </div>
   )
