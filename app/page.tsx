@@ -409,6 +409,23 @@ function EmployeeOverview({
   )
 }
 
+// Where a request comes from. Staff pick the site, then add the exact door/room.
+const LOCATIONS = ['Civic centre', 'Stores', 'Sakubva Housing', 'Dangamvura boka', 'Hobhouse']
+
+// The door/room detail must contain a name AND a number ("Door 14", "Room 203",
+// "Finance office 2") so a technician can actually find the spot.
+function doorDetailError(value: string): string {
+  const v = value.trim()
+  if (!v) return 'Enter the door or room, e.g. Door 14 or Room 203.'
+  if (!/[A-Za-z]{2,}/.test(v) || !/\d/.test(v)) return 'Include a name and a number, e.g. Door 14 or Room 203.'
+  return ''
+}
+
+// Stored in the existing door_number column as "Site, Door 14", so no database change is needed.
+function joinLocation(location: string, door: string): string {
+  return `${location}, ${door.trim().replace(/\s+/g, ' ')}`
+}
+
 function NewRequest({
   onBack,
   onSubmit,
@@ -418,12 +435,14 @@ function NewRequest({
 }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [priority, setPriority] = useState<Priority>('Medium')
   const [category, setCategory] = useState('Network & connectivity')
+  const [location, setLocation] = useState('')
   const [doorNumber, setDoorNumber] = useState('')
+  const [doorTouched, setDoorTouched] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState<Ticket | null>(null)
+  const doorError = doorDetailError(doorNumber)
 
   if (created)
     return (
@@ -442,11 +461,11 @@ function NewRequest({
     )
 
   const submit = async () => {
-    if (!title || !description || !doorNumber) return
+    if (!title || !description || !location || doorError) return
     setError('')
     setSubmitting(true)
     try {
-      const ticket = await onSubmit({ title, category, doorNumber, priority, description })
+      const ticket = await onSubmit({ title, category, doorNumber: joinLocation(location, doorNumber), priority: 'Medium', description })
       setCreated(ticket)
     } catch (err: any) {
       setError(err?.message || 'Could not submit your request. Please try again.')
@@ -476,16 +495,26 @@ function NewRequest({
               <option>Other IT issue</option>
             </select>
           </Field>
-          <Field label="Urgency">
-            <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)} className="input">
-              <option>Critical</option>
-              <option>High</option>
-              <option>Medium</option>
-              <option>Low</option>
+          <Field label="Location">
+            <select value={location} onChange={(e) => setLocation(e.target.value)} className="input">
+              <option value="">Select a location…</option>
+              {LOCATIONS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
             </select>
           </Field>
-          <Field label="Door number">
-            <input value={doorNumber} onChange={(e) => setDoorNumber(e.target.value)} placeholder="e.g. Door 14, Room 203" className="input" />
+          <Field label="Door number or room" full>
+            <input
+              value={doorNumber}
+              onChange={(e) => setDoorNumber(e.target.value)}
+              onBlur={() => setDoorTouched(true)}
+              maxLength={60}
+              placeholder="e.g. Door 14, Room 203"
+              className="input"
+            />
+            {doorTouched && doorError && <span className="mt-1.5 block text-xs font-semibold text-[#bd3c2d]">{doorError}</span>}
           </Field>
           <Field label="Describe the issue" full>
             <textarea
@@ -498,12 +527,12 @@ function NewRequest({
           </Field>
           <div className="sm:col-span-2 rounded-xl bg-[#f4f8fa] p-4 text-xs leading-5 text-[#648096]">
             <AlertCircle className="mr-2 inline text-[#24769f]" size={15} />
-            Mark Critical only when work is fully blocked, there is a security concern, or a council-wide service is unavailable.
+            The ICT team will review your request and set its urgency.
           </div>
         </div>
         {error && <p className="mt-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{error}</p>}
         <button
-          disabled={!title || !description || !doorNumber || submitting}
+          disabled={!title || !description || !location || !!doorError || submitting}
           onClick={submit}
           className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#24769f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -553,12 +582,15 @@ function NewAdminTicket({
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<Priority>('Medium')
   const [category, setCategory] = useState('Network & connectivity')
+  const [location, setLocation] = useState('')
   const [doorNumber, setDoorNumber] = useState('')
+  const [doorTouched, setDoorTouched] = useState(false)
   const [requesterId, setRequesterId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState<Ticket | null>(null)
+  const doorError = doorDetailError(doorNumber)
 
   if (created)
     return (
@@ -579,7 +611,9 @@ function NewAdminTicket({
               setDescription('')
               setPriority('Medium')
               setCategory('Network & connectivity')
+              setLocation('')
               setDoorNumber('')
+              setDoorTouched(false)
               setRequesterId('')
               setAssigneeId('')
             }}
@@ -595,14 +629,14 @@ function NewAdminTicket({
     )
 
   const submit = async () => {
-    if (!title || !description || !requesterId) return
+    if (!title || !description || !requesterId || !location || doorError) return
     setError('')
     setSubmitting(true)
     try {
       const ticket = await onSubmit({
         title,
         category,
-        doorNumber,
+        doorNumber: joinLocation(location, doorNumber),
         priority,
         description,
         requesterId,
@@ -659,8 +693,26 @@ function NewAdminTicket({
               <option>Low</option>
             </select>
           </Field>
-          <Field label="Door number">
-            <input value={doorNumber} onChange={(e) => setDoorNumber(e.target.value)} placeholder="e.g. Door 14, Room 203" className="input" />
+          <Field label="Location">
+            <select value={location} onChange={(e) => setLocation(e.target.value)} className="input">
+              <option value="">Select a location…</option>
+              {LOCATIONS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Door number or room">
+            <input
+              value={doorNumber}
+              onChange={(e) => setDoorNumber(e.target.value)}
+              onBlur={() => setDoorTouched(true)}
+              maxLength={60}
+              placeholder="e.g. Door 14, Room 203"
+              className="input"
+            />
+            {doorTouched && doorError && <span className="mt-1.5 block text-xs font-semibold text-[#bd3c2d]">{doorError}</span>}
           </Field>
           <Field label="Assign to (optional)" full>
             <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="input">
@@ -684,7 +736,7 @@ function NewAdminTicket({
         </div>
         {error && <p className="mt-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{error}</p>}
         <button
-          disabled={!title || !description || !requesterId || submitting}
+          disabled={!title || !description || !requesterId || !location || !!doorError || submitting}
           onClick={submit}
           className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#24769f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -2505,7 +2557,10 @@ export default function PageRoot() {
 
   const submitNewTicket = async (input: { title: string; category: string; doorNumber: string; priority: Priority; description: string }): Promise<Ticket> => {
     if (!user) throw new Error('You are signed out. Please sign in again.')
-    const created = await dbCreateTicket({ ...input, department: user.department }, user.id)
+    const created = await dbCreateTicket(
+      { ...input, priority: user.role === 'Administrator' ? input.priority : 'Medium', department: user.department },
+      user.id
+    )
     const withRequester: Ticket = { ...created, requester: user.name }
     setTickets((prev) => [withRequester, ...prev])
     dbLogActivity(user.id, `Reported a new issue: ${withRequester.title} (${withRequester.id})`).catch((err) => console.error('Failed to log activity', err))
