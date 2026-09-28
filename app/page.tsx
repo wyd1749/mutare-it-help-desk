@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, ArrowLeft, ArrowRight, Bell, BookOpen, CheckCircle2, ChevronDown,
-  ClipboardList, Clock3, Download, FileText, HelpCircle, LayoutDashboard, LogOut,
+  ClipboardList, Clock3, Download, Eye, FileText, HelpCircle, LayoutDashboard, LogOut,
   Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, Trash2, UserRound, Users, X,
 } from 'lucide-react'
 import { isSupabaseConfigured } from '@/lib/supabase/client'
@@ -882,6 +882,7 @@ function AdminQueue({
   const [filter, setFilter] = useState('All')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   const showUnassigned = () => {
     setQuery('')
@@ -927,6 +928,9 @@ function AdminQueue({
           <button onClick={() => go('New ticket')} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#24769f] px-5 text-sm font-bold text-white">
             <Plus size={17} /> New ticket
           </button>
+          <button onClick={() => setShowPreview(true)} className="flex h-11 items-center gap-2 rounded-xl border border-[#dce7ed] bg-white px-5 text-sm font-bold text-[#31546b] hover:bg-[#f4f8fa]">
+            <Eye size={16} /> Preview
+          </button>
           <button onClick={() => go('Reports')} className="flex h-11 items-center gap-2 rounded-xl border border-[#dce7ed] bg-white px-5 text-sm font-bold text-[#31546b]">
             <Download size={16} /> Export report
           </button>
@@ -939,6 +943,7 @@ function AdminQueue({
         <Stat label="Resolved" value={String(tickets.filter((t) => t.status === 'Resolved').length)} note="All time" />
         <Stat label="Technicians" value={String(technicians.length)} note="Available for assignment" />
       </div>
+      {showPreview && <ReportPreview tickets={tickets} onClose={() => setShowPreview(false)} />}
       <div ref={listRef} className="scroll-mt-6">
       <Card>
         <div className="flex flex-col gap-4 border-b border-[#edf1f3] p-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1865,26 +1870,235 @@ function TeamSettings({
   )
 }
 
+// --- CSV report: shared by the Download button and the on-site preview ---
+
+const REPORT_HEADERS = ['ID', 'Title', 'Category', 'Requester', 'Department', 'Priority', 'Status', 'Assignee']
+
+function reportRows(tickets: Ticket[]): string[][] {
+  return tickets.map((t) => [t.id, t.title, t.category, t.requester, t.department, t.priority, t.status, t.assignee])
+}
+
+function downloadReportCsv(tickets: Ticket[]) {
+  const csv = [
+    REPORT_HEADERS.join(','),
+    ...reportRows(tickets).map((row) => row.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(',')),
+  ].join('\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'mutare-it-service-report.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Spreadsheet-style cell fills (like Excel conditional formatting).
+const previewPriorityCell: Record<Priority, string> = {
+  Critical: 'bg-[#f8d7d3] text-[#9b2c1f] font-bold',
+  High: 'bg-[#fde4cc] text-[#a2510d] font-bold',
+  Medium: 'bg-[#fff2c2] text-[#7a5b00] font-semibold',
+  Low: 'bg-[#d9f0e2] text-[#1f6b41] font-semibold',
+}
+const previewStatusCell: Record<Status, string> = {
+  Open: 'bg-[#d6e9f5] text-[#1b5f86] font-bold',
+  'In progress': 'bg-[#fff2c2] text-[#7a5b00] font-bold',
+  Resolved: 'bg-[#d9f0e2] text-[#1f6b41] font-bold',
+}
+
+function BreakdownBar({ title, items }: { title: string; items: { label: string; count: number; color: string }[] }) {
+  const total = items.reduce((sum, i) => sum + i.count, 0)
+  return (
+    <div className="rounded-xl border border-[#dbe6ec] bg-white p-4">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-[#8aa0ae]">{title}</p>
+      <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-[#edf1f3]">
+        {total > 0 &&
+          items
+            .filter((i) => i.count > 0)
+            .map((i) => (
+              <div key={i.label} style={{ width: `${(i.count / total) * 100}%`, background: i.color }} title={`${i.label}: ${i.count}`} />
+            ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#526f80]">
+        {items.map((i) => (
+          <span key={i.label} className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: i.color }} />
+            {i.label} <strong className="text-[#2b3a44]">{i.count}</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ReportPreview({ tickets, onClose }: { tickets: Ticket[]; onClose: () => void }) {
+  const rows = useMemo(() => reportRows(tickets), [tickets])
+  const columnLetters = REPORT_HEADERS.map((_, i) => String.fromCharCode(65 + i))
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [onClose])
+
+  const statusItems = [
+    { label: 'Open', color: '#24769f' },
+    { label: 'In progress', color: '#d99a1c' },
+    { label: 'Resolved', color: '#2e9d5b' },
+  ].map((s) => ({ ...s, count: tickets.filter((t) => t.status === s.label).length }))
+
+  const priorityItems = [
+    { label: 'Critical', color: '#c0392b' },
+    { label: 'High', color: '#e67e22' },
+    { label: 'Medium', color: '#e6c65f' },
+    { label: 'Low', color: '#5fae86' },
+  ].map((p) => ({ ...p, count: tickets.filter((t) => t.priority === p.label).length }))
+
+  const workload = useMemo(() => {
+    const counts = new Map<string, number>()
+    tickets.forEach((t) => counts.set(t.assignee, (counts.get(t.assignee) ?? 0) + 1))
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  }, [tickets])
+  const maxLoad = workload.length ? workload[0][1] : 1
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0e1e30]/60 p-3 sm:p-6"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Report preview"
+    >
+      <div className="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dbe6ec] bg-[#f4f8fa] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#217346] text-white">
+              <FileText size={20} />
+            </span>
+            <div>
+              <h2 className="font-serif text-lg font-bold text-[#0e1e30]">Report preview</h2>
+              <p className="text-xs text-[#71899a]">mutare-it-service-report.csv · {rows.length} rows</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => downloadReportCsv(tickets)}
+              className="flex h-10 items-center gap-2 rounded-lg bg-[#24769f] px-4 text-sm font-bold text-white hover:bg-[#1d6188]"
+            >
+              <Download size={16} /> Download CSV
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Close preview"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#dbe6ec] bg-white text-[#526f80] hover:bg-[#f4f8fa]"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid gap-3 p-5 md:grid-cols-3">
+            <BreakdownBar title="By status" items={statusItems} />
+            <BreakdownBar title="By priority" items={priorityItems} />
+            <div className="rounded-xl border border-[#dbe6ec] bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#8aa0ae]">Workload by assignee</p>
+              <div className="mt-3 space-y-2">
+                {workload.length === 0 && <p className="text-xs text-[#8aa0ae]">No requests yet.</p>}
+                {workload.map(([name, count]) => (
+                  <div key={name} className="flex items-center gap-2 text-xs">
+                    <span className={`w-24 shrink-0 truncate ${name === 'Unassigned' ? 'font-semibold text-[#c0392b]' : 'text-[#526f80]'}`} title={name}>
+                      {name}
+                    </span>
+                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#edf1f3]">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${(count / maxLoad) * 100}%`, background: name === 'Unassigned' ? '#c0392b' : '#24769f' }}
+                      />
+                    </div>
+                    <strong className="w-5 text-right text-[#2b3a44]">{count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 pb-5">
+            <div className="max-h-[55vh] overflow-auto rounded-lg border border-[#c9d3da]">
+              <table className="border-collapse text-left text-[13px]" style={{ minWidth: 980 }}>
+                <thead>
+                  <tr className="h-7">
+                    <th className="sticky left-0 top-0 z-30 w-10 border border-[#c9d3da] bg-[#e4e9ed]" />
+                    {columnLetters.map((letter) => (
+                      <th key={letter} className="sticky top-0 z-20 border border-[#c9d3da] bg-[#e4e9ed] px-2 text-center text-[11px] font-semibold text-[#5b6b76]">
+                        {letter}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr className="h-8">
+                    <th className="sticky left-0 top-7 z-30 border border-[#c9d3da] bg-[#e4e9ed] text-center text-[11px] font-semibold text-[#5b6b76]">1</th>
+                    {REPORT_HEADERS.map((h) => (
+                      <th key={h} className="sticky top-7 z-20 whitespace-nowrap border border-[#1a5c38] bg-[#217346] px-3 text-left text-xs font-bold uppercase tracking-wide text-white">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 && (
+                    <tr>
+                      <td colSpan={REPORT_HEADERS.length + 1} className="px-4 py-8 text-center text-sm text-[#8aa0ae]">
+                        No requests to show yet.
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((row, i) => (
+                    <tr key={row[0]} className={i % 2 ? 'bg-[#f3f8f5]' : 'bg-white'}>
+                      <td className="sticky left-0 z-10 w-10 border border-[#c9d3da] bg-[#e4e9ed] text-center text-[11px] font-semibold text-[#5b6b76]">{i + 2}</td>
+                      {row.map((cell, c) => {
+                        let extra = 'text-[#2b3a44]'
+                        if (c === 0) extra = 'font-bold text-[#0e1e30]'
+                        if (c === 5) extra = previewPriorityCell[cell as Priority] ?? ''
+                        if (c === 6) extra = previewStatusCell[cell as Status] ?? ''
+                        if (c === 7 && cell === 'Unassigned') extra = 'italic text-[#c0392b]'
+                        return (
+                          <td key={c} className={`border border-[#d9e1e6] px-3 py-1.5 ${extra}`}>
+                            <div className="max-w-[260px] truncate" title={cell}>
+                              {cell}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-[#c9d3da] bg-[#f3f6f8] px-4 py-2 text-xs text-[#5b6b76]">
+          <span className="rounded-t-md border border-b-2 border-[#c9d3da] border-b-[#217346] bg-white px-4 py-1 font-semibold text-[#217346]">Sheet1</span>
+          <span>
+            {rows.length} rows × {REPORT_HEADERS.length} columns
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Reports({ tickets }: { tickets: Ticket[] }) {
   const resolved = tickets.filter((t) => t.status === 'Resolved').length
   const resolutionRate = tickets.length ? `${Math.round((resolved / tickets.length) * 100)}%` : '—'
 
-  const exportCsv = () => {
-    const csv = [
-      'ID,Title,Category,Requester,Department,Priority,Status,Assignee',
-      ...tickets.map((t) =>
-        [t.id, t.title, t.category, t.requester, t.department, t.priority, t.status, t.assignee]
-          .map((v) => `"${v.replaceAll('"', '""')}"`)
-          .join(',')
-      ),
-    ].join('\n')
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'mutare-it-service-report.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const [showPreview, setShowPreview] = useState(false)
+  const exportCsv = () => downloadReportCsv(tickets)
 
   return (
     <Page
@@ -1892,11 +2106,17 @@ function Reports({ tickets }: { tickets: Ticket[] }) {
       eyebrow="Administrator workspace"
       sub="Review service performance and download request data."
       action={
-        <button onClick={exportCsv} className="flex h-11 items-center gap-2 rounded-xl bg-[#24769f] px-5 text-sm font-bold text-white">
-          <Download size={16} /> Download CSV
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button onClick={() => setShowPreview(true)} className="flex h-11 items-center gap-2 rounded-xl border border-[#dce7ed] bg-white px-5 text-sm font-bold text-[#31546b] hover:bg-[#f4f8fa]">
+            <Eye size={16} /> Preview
+          </button>
+          <button onClick={exportCsv} className="flex h-11 items-center gap-2 rounded-xl bg-[#24769f] px-5 text-sm font-bold text-white">
+            <Download size={16} /> Download CSV
+          </button>
+        </div>
       }
     >
+      {showPreview && <ReportPreview tickets={tickets} onClose={() => setShowPreview(false)} />}
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat dark label="Total requests" value={String(tickets.length)} note="This reporting period" />
         <Stat label="Resolution rate" value={resolutionRate} note={`${resolved} of ${tickets.length} resolved`} />
