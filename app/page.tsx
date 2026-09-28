@@ -1362,16 +1362,24 @@ function SeniorTechnicianMonitor({
     if (!activeAlert) return
     if (typeof window === 'undefined' || !window.speechSynthesis) return
     let cancelled = false
-    const location = [activeAlert.doorNumber, activeAlert.department].filter(Boolean).join(', ')
+    // Read out where it is (site + door/room), which department, and what the
+    // issue is, so the technician knows where to go without looking at the screen.
+    const clean = (v: string) => v.trim().replace(/[.!?]+$/, '')
+    const spokenText = [
+      'New issue. Assigned technician, please attend the issue.',
+      activeAlert.doorNumber && `Location: ${clean(activeAlert.doorNumber)}.`,
+      activeAlert.department && `Department: ${clean(activeAlert.department)}.`,
+      activeAlert.title && `Issue: ${clean(activeAlert.title)}.`,
+    ]
+      .filter(Boolean)
+      .join(' ')
     const speakNext = () => {
       if (cancelled) return
       // Chrome/Edge can leave the speech queue stuck "paused" after a
       // notification, an alert(), or a tab focus change — reset it before
       // every utterance instead of trusting it's in a clean state.
       window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(
-        `New issue. Assigned technician, please attend the issue. ${location}.`
-      )
+      const utterance = new SpeechSynthesisUtterance(spokenText)
       utterance.rate = 0.95
       const scheduleNext = () => {
         if (cancelled) return
