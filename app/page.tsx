@@ -38,7 +38,10 @@ const POLL_INTERVAL_MS = 5000
 // so lists, search, exports and voice alerts keep working.
 function titleFromDescription(description: string): string {
   const text = description.replace(/\s+/g, ' ').trim()
-  return text.length > 70 ? `${text.slice(0, 67).trimEnd()}…` : text
+  if (text.length <= 70) return text
+  const cut = text.slice(0, 70)
+  const lastSpace = cut.lastIndexOf(' ')
+  return `${(lastSpace > 30 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
 }
 
 // Time-of-day greeting based on the viewer's local clock:
@@ -1452,11 +1455,16 @@ function SeniorTechnicianMonitor({
     // Read out where it is (site + door/room), which department, and what the
     // issue is, so the technician knows where to go without looking at the screen.
     const clean = (v: string) => v.trim().replace(/[.!?]+$/, '')
+    // Tickets no longer have a typed title, so read the start of the description.
+    // The category is a fixed English list, so it is always safe to read out.
+    const issueText = (activeAlert.description || activeAlert.title || '').replace(/\s+/g, ' ').trim()
+    const shortIssue = issueText.length > 140 ? issueText.slice(0, issueText.lastIndexOf(' ', 140) > 40 ? issueText.lastIndexOf(' ', 140) : 140) : issueText
     const spokenText = [
       'New issue. Assigned technician, please attend the issue.',
       activeAlert.doorNumber && `Location: ${clean(activeAlert.doorNumber)}.`,
       activeAlert.department && `Department: ${clean(activeAlert.department)}.`,
-      activeAlert.title && isSpeakableIssue(activeAlert.title) && `Issue: ${clean(activeAlert.title)}.`,
+      activeAlert.category && `Category: ${clean(activeAlert.category).replace(/&/g, 'and')}.`,
+      shortIssue && isSpeakableIssue(shortIssue) && `Issue: ${clean(shortIssue)}.`,
     ]
       .filter(Boolean)
       .join(' ')
