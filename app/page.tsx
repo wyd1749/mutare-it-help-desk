@@ -34,6 +34,13 @@ import {
 // assignments and status changes show up without anyone reloading.
 const POLL_INTERVAL_MS = 5000
 
+// Tickets no longer ask for a title. A short one is made from the description
+// so lists, search, exports and voice alerts keep working.
+function titleFromDescription(description: string): string {
+  const text = description.replace(/\s+/g, ' ').trim()
+  return text.length > 70 ? `${text.slice(0, 67).trimEnd()}…` : text
+}
+
 // Time-of-day greeting based on the viewer's local clock:
 // 00:00–11:59 → Good morning, 12:00–16:59 → Good afternoon, 17:00–23:59 → Good evening
 function getGreeting(): string {
@@ -433,7 +440,6 @@ function NewRequest({
   onBack: () => void
   onSubmit: (t: { title: string; category: string; doorNumber: string; priority: Priority; description: string }) => Promise<Ticket>
 }) {
-  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('Network & connectivity')
   const [location, setLocation] = useState('')
@@ -461,11 +467,11 @@ function NewRequest({
     )
 
   const submit = async () => {
-    if (!title || !description || !location || doorError) return
+    if (!description || !location || doorError) return
     setError('')
     setSubmitting(true)
     try {
-      const ticket = await onSubmit({ title, category, doorNumber: joinLocation(location, doorNumber), priority: 'Medium', description })
+      const ticket = await onSubmit({ title: titleFromDescription(description), category, doorNumber: joinLocation(location, doorNumber), priority: 'Medium', description })
       setCreated(ticket)
     } catch (err: any) {
       setError(err?.message || 'Could not submit your request. Please try again.')
@@ -482,9 +488,6 @@ function NewRequest({
       <PageTitle eyebrow="New support request" title="Tell us what's going on" sub="Give us as much detail as possible so we can resolve your issue quickly." />
       <Card>
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Issue title" full>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. I cannot connect to office Wi-Fi" className="input" />
-          </Field>
           <Field label="Issue category">
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
               <option>Network & connectivity</option>
@@ -532,7 +535,7 @@ function NewRequest({
         </div>
         {error && <p className="mt-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{error}</p>}
         <button
-          disabled={!title || !description || !location || !!doorError || submitting}
+          disabled={!description || !location || !!doorError || submitting}
           onClick={submit}
           className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#24769f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -578,7 +581,6 @@ function NewAdminTicket({
   ].filter((g) => g.people.length > 0)
   const allRequesters = [...employees, ...technicians, ...seniorTechnicians, ...admins]
 
-  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<Priority>('Medium')
   const [category, setCategory] = useState('Network & connectivity')
@@ -607,7 +609,6 @@ function NewAdminTicket({
           <button
             onClick={() => {
               setCreated(null)
-              setTitle('')
               setDescription('')
               setPriority('Medium')
               setCategory('Network & connectivity')
@@ -629,12 +630,12 @@ function NewAdminTicket({
     )
 
   const submit = async () => {
-    if (!title || !description || !requesterId || !location || doorError) return
+    if (!description || !requesterId || !location || doorError) return
     setError('')
     setSubmitting(true)
     try {
       const ticket = await onSubmit({
-        title,
+        title: titleFromDescription(description),
         category,
         doorNumber: joinLocation(location, doorNumber),
         priority,
@@ -671,9 +672,6 @@ function NewAdminTicket({
                 </optgroup>
               ))}
             </select>
-          </Field>
-          <Field label="Issue title" full>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Cannot connect to office Wi-Fi" className="input" />
           </Field>
           <Field label="Issue category">
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
@@ -736,7 +734,7 @@ function NewAdminTicket({
         </div>
         {error && <p className="mt-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{error}</p>}
         <button
-          disabled={!title || !description || !requesterId || !location || !!doorError || submitting}
+          disabled={!description || !requesterId || !location || !!doorError || submitting}
           onClick={submit}
           className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#24769f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -1094,13 +1092,13 @@ function TicketDetail({
   }
 
   const handleDelete = async () => {
-    if (!onDelete || !confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) return
+    if (!onDelete || !confirm('Are you sure you want to remove this ticket? This action cannot be undone.')) return
     setError('')
     setDeleting(true)
     try {
       await onDelete()
     } catch (err: any) {
-      setError(err?.message || 'Could not delete ticket. Please try again.')
+      setError(err?.message || 'Could not remove ticket. Please try again.')
       setDeleting(false)
     }
   }
@@ -1223,7 +1221,7 @@ function TicketDetail({
                 onClick={handleDelete}
                 className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#f7c5bd] bg-[#fff0ee] text-sm font-bold text-[#bd3c2d] hover:bg-[#fde8e5] disabled:opacity-60"
               >
-                {deleting ? 'Deleting…' : 'Delete ticket'} <Trash2 size={16} />
+                {deleting ? 'Removing…' : 'Remove ticket'} <Trash2 size={16} />
               </button>
             )}
           </div>
@@ -1489,12 +1487,12 @@ function SeniorTechnicianMonitor({
 
   const handleDelete = async (id: string) => {
     setError('')
-    if (!confirm('Delete this report? This action cannot be undone.')) return
+    if (!confirm('Remove this ticket? This action cannot be undone.')) return
     setDeletingId(id)
     try {
       await onDeleteTicket(id)
     } catch (err: any) {
-      setError(err?.message || 'Could not delete this report. Please try again.')
+      setError(err?.message || 'Could not remove this ticket. Please try again.')
     } finally {
       setDeletingId(null)
     }
@@ -1567,7 +1565,7 @@ function SeniorTechnicianMonitor({
                   onClick={() => handleDelete(t.id)}
                   className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f7c5bd] bg-[#fff0ee] px-3 py-2 text-xs font-bold text-[#bd3c2d] hover:bg-[#fde8e5] disabled:opacity-60"
                 >
-                  <Trash2 size={14} /> {deletingId === t.id ? 'Deleting…' : 'Delete'}
+                  <Trash2 size={14} /> {deletingId === t.id ? 'Removing…' : 'Remove ticket'}
                 </button>
               </div>
             ))}
@@ -1965,7 +1963,7 @@ function TeamSettings({
       <PeopleList title="Administrators" note="Full access to every request, report and account." people={admins} onDeleteMember={onDeleteMember} />
       <PeopleList
         title="Senior technicians"
-        note="Read-only monitor of every assigned issue, with the ability to delete reports."
+        note="Read-only monitor of every assigned issue, with the ability to remove tickets."
         people={seniorTechnicians}
         onDeleteMember={onDeleteMember}
       />
@@ -2698,7 +2696,7 @@ export default function PageRoot() {
     await dbDeleteTicket(id)
     setTickets((prev) => prev.filter((t) => t.id !== id))
     if (user) {
-      dbLogActivity(user.id, `Deleted ticket ${id}`).catch((err) => console.error('Failed to log activity', err))
+      dbLogActivity(user.id, `Removed ticket ${id}`).catch((err) => console.error('Failed to log activity', err))
     }
   }
 
