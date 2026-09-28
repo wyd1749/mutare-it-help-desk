@@ -99,6 +99,7 @@ export async function fetchTickets(): Promise<Ticket[]> {
         'requester:employees!tickets_requester_id_fkey(name),' +
         'assignee:employees!tickets_assignee_id_fkey(name)'
     )
+    .is('removed_at', null) // removed tickets stay in the database but are hidden here
     .order('reported_at', { ascending: false })
   if (error) throw error
   return (data as any[]).map((row) => ({
@@ -194,21 +195,28 @@ export async function updateTicket(ticket: Ticket, people: Employee[]): Promise<
   if (error) throw error
 }
 
+// "Remove ticket": the row is NOT deleted. It is stamped with removed_at and
+// hidden from every list. To bring one back, set removed_at to null in Supabase.
 export async function deleteTicket(id: string): Promise<void> {
   const supabase = createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('tickets')
-    .delete()
+    .update({ removed_at: new Date().toISOString() })
     .eq('id', id)
+    .is('removed_at', null)
+    .select('id')
   if (error) throw error
+  // A row-level-security policy that blocks the update returns no error and no
+  // rows, so treat "nothing changed" as a failure instead of pretending it worked.
+  if (!data || data.length === 0) throw new Error('Could not remove this ticket. You may not have permission.')
 }
 
 export async function clearAllTickets(): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase
     .from('tickets')
-    .delete()
-    .neq('id', '')
+    .update({ removed_at: new Date().toISOString() })
+    .is('removed_at', null)
   if (error) throw error
 }
 

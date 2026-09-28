@@ -1092,7 +1092,7 @@ function TicketDetail({
   }
 
   const handleDelete = async () => {
-    if (!onDelete || !confirm('Are you sure you want to remove this ticket? This action cannot be undone.')) return
+    if (!onDelete || !confirm('Are you sure you want to remove this ticket? It will be hidden from all lists.')) return
     setError('')
     setDeleting(true)
     try {
@@ -1487,7 +1487,7 @@ function SeniorTechnicianMonitor({
 
   const handleDelete = async (id: string) => {
     setError('')
-    if (!confirm('Remove this ticket? This action cannot be undone.')) return
+    if (!confirm('Remove this ticket? It will be hidden from all lists.')) return
     setDeletingId(id)
     try {
       await onDeleteTicket(id)
