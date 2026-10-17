@@ -3,15 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
-const ROLES = ['Employee', 'Technician', 'Senior Technician', 'Administrator'] as const
+const ROLES = ['Employee', 'Technician', 'Senior Technician', 'IT Manager', 'Administrator'] as const
 type RoleName = (typeof ROLES)[number]
-const ID_PREFIX: Record<RoleName, string> = { Employee: 'EMP', Technician: 'TECH', 'Senior Technician': 'SRTECH', Administrator: 'ADM' }
+const ID_PREFIX: Record<RoleName, string> = { Employee: 'EMP', Technician: 'TECH', 'Senior Technician': 'SRTECH', 'IT Manager': 'MGR', Administrator: 'ADM' }
 const EMAIL_DOMAIN = '@mutarecity.org'
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status })
 
 export async function POST(req: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  // Server-side calls go straight to the Supabase gateway inside Docker
+  // (http://api-gw:8000); the public https address is for browsers only.
+  const url = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceKey) {
     return fail('Server is missing SUPABASE_SERVICE_ROLE_KEY. Add it to .env.local and restart the dev server.', 500)
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
   const department = String(body?.department ?? '').trim() || 'ICT'
   const role = body?.role as RoleName
   if (!name || !email || !password) return fail('Name, email and password are required.', 400)
-  if (!ROLES.includes(role)) return fail('Role must be Employee, Technician, Senior Technician or Administrator.', 400)
+  if (!ROLES.includes(role)) return fail('Role must be Employee, Technician, Senior Technician, IT Manager or Administrator.', 400)
   if (!email.endsWith(EMAIL_DOMAIN)) return fail(`Email must end with ${EMAIL_DOMAIN}.`, 400)
   if (password.length < 8) return fail('Password must be at least 8 characters.', 400)
 

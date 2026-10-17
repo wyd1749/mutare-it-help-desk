@@ -68,10 +68,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 const crestUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGPT%20Image%20Sep%2010%2C%202026%2C%2005_59_02%20PM-fpjbEi391Jxs3WlrCYOJWR7EJ3F9LH.png'
-type Role = 'employee' | 'admin' | 'technician' | 'senior_technician'
+type Role = 'employee' | 'admin' | 'technician' | 'senior_technician' | 'it_manager'
 type Status = 'Open' | 'In progress' | 'Resolved'
 type Priority = 'Critical' | 'High' | 'Medium' | 'Low'
-type Ticket = { id: string; title: string; category: string; requester: string; department: string; doorNumber: string; time: string; priority: Priority; status: Status; assignee: string; description: string }
+type Ticket = { id: string; title: string; category: string; requester: string; department: string; doorNumber: string; time: string; reportedAt?: string; priority: Priority; status: Status; assignee: string; description: string }
 type Employee = { id: string; name: string; email: string; department: string; role: string; status: 'Active' | 'Invited' }
 type Activity = { id: string; user: string; action: string; time: string }
 
@@ -231,6 +231,8 @@ function Sidebar({
       ? [['Overview', LayoutDashboard], ['All requests', ClipboardList], ['Knowledge base', BookOpen], ['Team settings', Users], ['Reports', FileText]]
       : role === 'technician'
       ? [['My tasks', LayoutDashboard], ['Assigned requests', ClipboardList], ['Knowledge base', BookOpen], ['My profile', UserRound]]
+      : role === 'it_manager'
+      ? [['Manager overview', LayoutDashboard], ['All requests', ClipboardList], ['Reports', FileText]]
       : role === 'senior_technician'
       ? [['Service desk monitor', LayoutDashboard]]
       : [['My overview', LayoutDashboard], ['My requests', ClipboardList], ['Help articles', BookOpen], ['My profile', UserRound]]
@@ -273,7 +275,7 @@ function Sidebar({
             </button>
           ))}
         </nav>
-        {role !== 'senior_technician' && (
+        {role !== 'senior_technician' && role !== 'it_manager' && (
           <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-[#d9b44a]/20 text-[#e6c65f]">
               <HelpCircle size={18} />
@@ -304,6 +306,8 @@ function Header({
   const role =
     user.role === 'Administrator'
       ? 'admin'
+      : user.role === 'IT Manager'
+      ? 'it_manager'
       : user.role === 'Senior Technician'
       ? 'senior_technician'
       : user.role === 'Technician'
@@ -312,6 +316,8 @@ function Header({
   const label =
     role === 'admin'
       ? 'Administrator workspace'
+      : role === 'it_manager'
+      ? 'IT Manager workspace'
       : role === 'senior_technician'
       ? 'Service desk monitor'
       : role === 'technician'
@@ -846,6 +852,7 @@ function AdminWorkspace({
   technicians,
   seniorTechnicians,
   admins,
+  itManagers,
   onAddMember,
   onDeleteMember,
   user,
@@ -866,6 +873,7 @@ function AdminWorkspace({
   technicians: Employee[]
   seniorTechnicians: Employee[]
   admins: Employee[]
+  itManagers: Employee[]
   onAddMember: (m: NewMember) => Promise<void>
   onDeleteMember: (id: string) => Promise<void>
   user: Employee
@@ -899,6 +907,7 @@ function AdminWorkspace({
         technicians={technicians}
         seniorTechnicians={seniorTechnicians}
         admins={admins}
+        itManagers={itManagers}
         onAddMember={onAddMember}
         onDeleteMember={onDeleteMember}
         settings={settings}
@@ -1751,7 +1760,7 @@ function KnowledgeBase({
   )
 }
 
-type NewMember = { name: string; email: string; department: string; role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician'; password: string }
+type NewMember = { name: string; email: string; department: string; role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician' | 'IT Manager'; password: string }
 const emptyMember: NewMember = { name: '', email: '', department: 'Finance', role: 'Employee', password: '' }
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
@@ -1833,6 +1842,7 @@ function TeamSettings({
   technicians,
   seniorTechnicians,
   admins,
+  itManagers,
   onAddMember,
   onDeleteMember,
   settings,
@@ -1842,6 +1852,7 @@ function TeamSettings({
   technicians: Employee[]
   seniorTechnicians: Employee[]
   admins: Employee[]
+  itManagers: Employee[]
   onAddMember: (m: NewMember) => Promise<void>
   onDeleteMember: (id: string) => Promise<void>
   settings: ServiceDeskSettings | null
@@ -1907,7 +1918,7 @@ function TeamSettings({
   }
 
   return (
-    <Page title="Team settings" eyebrow="Administration" sub="Create accounts for employees, technicians, senior technicians and administrators, and manage service desk preferences.">
+    <Page title="Team settings" eyebrow="Administration" sub="Create accounts for employees, technicians, senior technicians, IT managers and administrators, and manage service desk preferences.">
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="font-serif text-xl font-bold">Team accounts</h2>
@@ -1940,6 +1951,7 @@ function TeamSettings({
                 <option>Employee</option>
                 <option>Technician</option>
                 <option>Senior Technician</option>
+                <option>IT Manager</option>
                 <option>Administrator</option>
               </select>
             </Field>
@@ -1989,6 +2001,12 @@ function TeamSettings({
         title="Senior technicians"
         note="Read-only monitor of every assigned issue, with the ability to remove tickets."
         people={seniorTechnicians}
+        onDeleteMember={onDeleteMember}
+      />
+      <PeopleList
+        title="IT managers"
+        note="Read-only overview of every request, technician workload and forgotten tickets."
+        people={itManagers}
         onDeleteMember={onDeleteMember}
       />
       <PeopleList title="Employees" note="Can report issues and track their own requests." people={employees} onDeleteMember={onDeleteMember} />
@@ -2369,6 +2387,420 @@ function Reports({ tickets }: { tickets: Ticket[] }) {
   )
 }
 
+// --- IT Manager: read-only oversight (never edits, assigns or deletes) -----------
+
+// A ticket is "forgotten" when it is not resolved and was reported more than this many days ago.
+const FORGOTTEN_DAYS = 3
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function daysWaiting(t: Ticket): number {
+  if (!t.reportedAt) return 0
+  return Math.max(0, Math.floor((Date.now() - new Date(t.reportedAt).getTime()) / DAY_MS))
+}
+
+function isForgotten(t: Ticket): boolean {
+  return t.status !== 'Resolved' && !!t.reportedAt && Date.now() - new Date(t.reportedAt).getTime() > FORGOTTEN_DAYS * DAY_MS
+}
+
+function topCounts(values: string[], limit: number, minCount = 1): { label: string; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const v of values) {
+    const key = v.trim()
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }))
+}
+
+function ManagerRow({ t, onClick }: { t: Ticket; onClick: () => void }) {
+  const forgotten = isForgotten(t)
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3 px-1 py-4 text-left hover:bg-[#f8fbfc] sm:gap-4">
+      <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${forgotten ? 'bg-[#fff0ee] text-[#bd3c2d]' : 'bg-[#eaf4f8] text-[#24769f]'}`}>
+        {forgotten ? <AlertCircle size={17} /> : <ClipboardList size={17} />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-[#31546b]">{t.title}</p>
+        <p className="mt-1 text-xs text-[#8aa0ae]">
+          {t.id} · {t.category}
+          {t.doorNumber ? ` · ${t.doorNumber}` : ''} · {t.assignee === 'Unassigned' ? 'Not assigned' : `Assigned to ${t.assignee}`}
+        </p>
+      </div>
+      <div className="hidden text-right sm:block">
+        <div className="flex items-center justify-end gap-2">
+          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${priorityClass[t.priority]}`}>{t.priority}</span>
+          {forgotten ? (
+            <span className="rounded-full bg-[#fff0ee] px-2.5 py-1 text-[11px] font-bold text-[#bd3c2d]">{daysWaiting(t)} days waiting</span>
+          ) : (
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${statusClass[t.status]}`}>{t.status}</span>
+          )}
+        </div>
+        <p className="mt-1 text-[11px] text-[#8aa0ae]">Reported {t.time}</p>
+      </div>
+      <ArrowRight size={16} className="shrink-0 text-[#9db1bd]" />
+    </button>
+  )
+}
+
+function ManagerTicketDetail({ ticket, onBack }: { ticket: Ticket; onBack: () => void }) {
+  const [notes, setNotes] = useState<Note[]>([])
+  const [notesLoading, setNotesLoading] = useState(true)
+  const forgotten = isForgotten(ticket)
+
+  useEffect(() => {
+    let cancelled = false
+    setNotesLoading(true)
+    dbFetchNotes(ticket.id)
+      .then((n) => {
+        if (!cancelled) setNotes(n)
+      })
+      .catch((err) => console.error('Could not load notes.', err))
+      .finally(() => {
+        if (!cancelled) setNotesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ticket.id])
+
+  return (
+    <div className="mx-auto max-w-4xl p-5 sm:p-8">
+      <button onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-semibold text-[#24769f]">
+        <ArrowLeft size={16} /> Back
+      </button>
+      <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="mb-2 text-sm font-bold text-[#24769f]">
+            {ticket.id} · {ticket.category}
+          </p>
+          <h1 className="font-serif text-3xl font-bold">{ticket.title}</h1>
+          <p className="mt-2 text-sm text-[#71899a]">
+            Reported {ticket.time} by {ticket.requester} · {ticket.department}
+            {ticket.doorNumber ? ` · ${ticket.doorNumber}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {forgotten && <span className="rounded-full bg-[#fff0ee] px-3 py-1.5 text-xs font-bold text-[#bd3c2d]">Forgotten · {daysWaiting(ticket)} days waiting</span>}
+          <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${statusClass[ticket.status]}`}>{ticket.status}</span>
+        </div>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[1.2fr,.8fr]">
+        <div className="flex flex-col gap-6">
+          <Card>
+            <h2 className="font-serif text-lg font-bold">Issue description</h2>
+            <p className="mt-4 rounded-xl bg-[#f7fafb] p-4 text-sm leading-7 text-[#526f80]">{ticket.description}</p>
+          </Card>
+          <Card>
+            <h2 className="font-serif text-lg font-bold">Internal notes</h2>
+            <div className="mt-3 divide-y divide-[#edf1f3]">
+              {notesLoading ? (
+                <p className="py-4 text-xs text-[#8aa0ae]">Loading notes…</p>
+              ) : notes.length ? (
+                notes.map((n) => (
+                  <div key={n.id} className="py-3">
+                    <p className="text-sm leading-6 text-[#31546b]">{n.body}</p>
+                    <p className="mt-1 text-xs text-[#8aa0ae]">
+                      {n.author} · {n.time}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="py-4 text-xs text-[#8aa0ae]">No internal notes yet.</p>
+              )}
+            </div>
+          </Card>
+        </div>
+        <Card>
+          <h2 className="font-serif text-lg font-bold">Handling</h2>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-[#8aa0ae]">Technician</p>
+          <p className="mt-1 text-sm font-semibold text-[#26465d]">{ticket.assignee === 'Unassigned' ? 'Not yet assigned' : ticket.assignee}</p>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-[#8aa0ae]">Priority</p>
+          <div className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-bold ${priorityClass[ticket.priority]}`}>{ticket.priority}</div>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-[#8aa0ae]">Waiting</p>
+          <p className="mt-1 text-sm font-semibold text-[#26465d]">{ticket.status === 'Resolved' ? 'Resolved' : `${daysWaiting(ticket)} day${daysWaiting(ticket) === 1 ? '' : 's'} since it was reported`}</p>
+          <p className="mt-6 text-xs leading-5 text-[#8aa0ae]">This is a read-only view. Assignment and status changes are made by administrators and technicians.</p>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+type ManagerFilter = 'unresolved' | 'forgotten' | 'unassigned' | 'resolved' | 'all'
+
+function ManagerWorkspace({
+  tickets,
+  technicians,
+  user,
+  active,
+  setActive,
+}: {
+  tickets: Ticket[]
+  technicians: Employee[]
+  user: Employee
+  active: string
+  setActive: (x: string) => void
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<ManagerFilter>('unresolved')
+  const [query, setQuery] = useState('')
+  const [showPreview, setShowPreview] = useState(false)
+
+  // Leaving a page (sidebar click) closes any open ticket.
+  useEffect(() => {
+    setSelectedId(null)
+  }, [active])
+
+  const unresolved = useMemo(() => tickets.filter((t) => t.status !== 'Resolved'), [tickets])
+  const forgotten = useMemo(
+    () =>
+      unresolved
+        .filter(isForgotten)
+        .sort((a, b) => new Date(a.reportedAt ?? 0).getTime() - new Date(b.reportedAt ?? 0).getTime()),
+    [unresolved]
+  )
+  const unassigned = useMemo(() => unresolved.filter((t) => t.assignee === 'Unassigned'), [unresolved])
+  const urgent = useMemo(() => unresolved.filter((t) => t.priority === 'Critical' || t.priority === 'High'), [unresolved])
+  const resolvedCount = tickets.length - unresolved.length
+
+  const selected = selectedId ? tickets.find((t) => t.id === selectedId) ?? null : null
+  if (selected) return <ManagerTicketDetail ticket={selected} onBack={() => setSelectedId(null)} />
+
+  const openTicket = (t: Ticket) => setSelectedId(t.id)
+  const showFiltered = (f: ManagerFilter) => {
+    setFilter(f)
+    setActive('All requests')
+  }
+
+  // ---------- All requests ----------
+  if (active === 'All requests') {
+    const q = query.trim().toLowerCase()
+    const base =
+      filter === 'forgotten' ? forgotten
+      : filter === 'unassigned' ? unassigned
+      : filter === 'resolved' ? tickets.filter((t) => t.status === 'Resolved')
+      : filter === 'all' ? tickets
+      : unresolved
+    const rows = q
+      ? base.filter((t) => [t.id, t.title, t.category, t.requester, t.assignee, t.department, t.doorNumber].some((v) => v.toLowerCase().includes(q)))
+      : base
+    const chips: [ManagerFilter, string, number][] = [
+      ['unresolved', 'Unresolved', unresolved.length],
+      ['forgotten', `Forgotten (${FORGOTTEN_DAYS}+ days)`, forgotten.length],
+      ['unassigned', 'Unassigned', unassigned.length],
+      ['resolved', 'Resolved', resolvedCount],
+      ['all', 'All', tickets.length],
+    ]
+    return (
+      <Page title="All requests" eyebrow="IT Manager workspace" sub="Every request in the service desk. Open one to see its notes and who is handling it.">
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {chips.map(([key, label, count]) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={`rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+                  filter === key ? 'border-[#102f4a] bg-[#102f4a] text-white' : 'border-[#dce7ed] bg-white text-[#31546b] hover:bg-[#f4f8fa]'
+                }`}
+              >
+                {label} <span className="opacity-70">{count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full lg:w-72">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9db1bd]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search requests"
+              className="h-10 w-full rounded-xl border border-[#dce7ed] bg-white pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#2f87b1]"
+            />
+          </div>
+        </div>
+        <Card>
+          <div className="divide-y divide-[#edf1f3]">
+            {rows.length ? (
+              rows.map((t) => <ManagerRow key={t.id} t={t} onClick={() => openTicket(t)} />)
+            ) : (
+              <Empty title="Nothing here" text="No requests match this filter." />
+            )}
+          </div>
+        </Card>
+      </Page>
+    )
+  }
+
+  // ---------- Reports ----------
+  if (active === 'Reports') {
+    const resolutionRate = tickets.length ? `${Math.round((resolvedCount / tickets.length) * 100)}%` : '—'
+    const priorityItems = (['Critical', 'High', 'Medium', 'Low'] as Priority[]).map((p) => ({
+      label: p,
+      count: tickets.filter((t) => t.priority === p).length,
+      color: p === 'Critical' ? '#bd3c2d' : p === 'High' ? '#e08a1e' : p === 'Medium' ? '#3b82c4' : '#4aa675',
+    }))
+    const statusItems = (['Open', 'In progress', 'Resolved'] as Status[]).map((s) => ({
+      label: s,
+      count: tickets.filter((t) => t.status === s).length,
+      color: s === 'Open' ? '#e0a53a' : s === 'In progress' ? '#3b82c4' : '#4aa675',
+    }))
+    return (
+      <Page
+        title="Reports & exports"
+        eyebrow="IT Manager workspace"
+        sub="Service performance at a glance, and the full request list to download."
+        action={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button onClick={() => setShowPreview(true)} className="flex h-11 items-center gap-2 rounded-xl border border-[#dce7ed] bg-white px-5 text-sm font-bold text-[#31546b] hover:bg-[#f4f8fa]">
+              <Eye size={16} /> Preview
+            </button>
+            <button onClick={() => downloadReportCsv(tickets)} className="flex h-11 items-center gap-2 rounded-xl bg-[#24769f] px-5 text-sm font-bold text-white">
+              <Download size={16} /> Download CSV
+            </button>
+          </div>
+        }
+      >
+        {showPreview && <ReportPreview tickets={tickets} onClose={() => setShowPreview(false)} />}
+        <div className="mb-6 grid gap-4 sm:grid-cols-3">
+          <Stat dark label="Total requests" value={String(tickets.length)} note="Everything in the service desk" />
+          <Stat label="Resolution rate" value={resolutionRate} note={`${resolvedCount} of ${tickets.length} resolved`} />
+          <Stat label="Forgotten" value={String(forgotten.length)} note={`Unresolved for more than ${FORGOTTEN_DAYS} days`} />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <BreakdownBar title="By status" items={statusItems} />
+          <BreakdownBar title="By priority" items={priorityItems} />
+        </div>
+      </Page>
+    )
+  }
+
+  // ---------- Overview ----------
+  const shownForgotten = forgotten.slice(0, 8)
+  const workload = technicians
+    .map((tech) => {
+      const mine = unresolved.filter((t) => t.assignee === tech.name)
+      return { id: tech.id, name: tech.name, open: mine.length, forgotten: mine.filter(isForgotten).length }
+    })
+    .sort((a, b) => b.open - a.open)
+  const maxOpen = Math.max(1, unassigned.length, ...workload.map((w) => w.open))
+  const topCategories = topCounts(tickets.map((t) => t.category), 5)
+  const topSites = topCounts(tickets.map((t) => t.doorNumber.split(',')[0] ?? ''), 5)
+  const repeatSpots = topCounts(tickets.map((t) => t.doorNumber), 5, 2)
+
+  return (
+    <Page
+      title="IT service overview"
+      eyebrow={`${getGreeting()}, ${user.name.split(' ')[0]}`}
+      sub="What needs attention, who is carrying the load, and what has been left waiting."
+    >
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat dark label="Unresolved" value={String(unresolved.length)} note={`${resolvedCount} resolved so far`} onNoteClick={() => showFiltered('unresolved')} />
+        <Stat label="Unassigned" value={String(unassigned.length)} note="Waiting for a technician" onNoteClick={() => showFiltered('unassigned')} />
+        <Stat label="Critical & high" value={String(urgent.length)} note="Unresolved, urgent priority" />
+        <Stat label="Forgotten" value={String(forgotten.length)} note={`Open for more than ${FORGOTTEN_DAYS} days`} onNoteClick={() => showFiltered('forgotten')} />
+      </div>
+
+      <section className={`mb-6 rounded-2xl border p-5 shadow-sm sm:p-6 ${forgotten.length ? 'border-[#f7c5bd] bg-[#fffaf9]' : 'border-[#dce7ed] bg-white'}`}>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-serif text-lg font-bold text-[#183148]">Forgotten reports</h2>
+            <p className="mt-1 text-xs text-[#71899a]">Not resolved and reported more than {FORGOTTEN_DAYS} days ago, oldest first.</p>
+          </div>
+          {forgotten.length > shownForgotten.length && (
+            <button onClick={() => showFiltered('forgotten')} className="text-xs font-bold text-[#24769f]">
+              View all {forgotten.length} <ArrowRight className="ml-1 inline" size={12} />
+            </button>
+          )}
+        </div>
+        <div className="divide-y divide-[#f3dcd8]">
+          {shownForgotten.length ? (
+            shownForgotten.map((t) => <ManagerRow key={t.id} t={t} onClick={() => openTicket(t)} />)
+          ) : (
+            <Empty title="Nothing forgotten" text={`Every unresolved request is less than ${FORGOTTEN_DAYS} days old.`} />
+          )}
+        </div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHead title="Technician workload" />
+          <div className="flex flex-col gap-4">
+            {workload.map((w) => (
+              <div key={w.id}>
+                <div className="mb-1.5 flex items-center justify-between text-sm">
+                  <span className="font-semibold text-[#26465d]">{w.name}</span>
+                  <span className="text-xs text-[#71899a]">
+                    {w.open} unresolved{w.forgotten > 0 && <strong className="ml-2 text-[#bd3c2d]">{w.forgotten} forgotten</strong>}
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-[#edf1f3]">
+                  <div className="h-full rounded-full bg-[#24769f]" style={{ width: `${(w.open / maxOpen) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <span className="font-semibold text-[#a76500]">Unassigned</span>
+                <span className="text-xs text-[#71899a]">{unassigned.length} waiting</span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-[#edf1f3]">
+                <div className="h-full rounded-full bg-[#d9b44a]" style={{ width: `${(unassigned.length / maxOpen) * 100}%` }} />
+              </div>
+            </div>
+            {!workload.length && <p className="text-xs text-[#8aa0ae]">No technicians have been added yet.</p>}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHead title="Where the problems are" />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#8aa0ae]">Top categories</p>
+              {topCategories.length ? (
+                topCategories.map((c) => (
+                  <div key={c.label} className="flex items-center justify-between border-b border-[#edf1f3] py-2 text-sm">
+                    <span className="text-[#31546b]">{c.label}</span>
+                    <strong className="text-[#26465d]">{c.count}</strong>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-[#8aa0ae]">No requests yet.</p>
+              )}
+            </div>
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#8aa0ae]">Busiest sites</p>
+              {topSites.length ? (
+                topSites.map((c) => (
+                  <div key={c.label} className="flex items-center justify-between border-b border-[#edf1f3] py-2 text-sm">
+                    <span className="text-[#31546b]">{c.label}</span>
+                    <strong className="text-[#26465d]">{c.count}</strong>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-[#8aa0ae]">No requests yet.</p>
+              )}
+            </div>
+          </div>
+          <div className="mt-6">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#8aa0ae]">Repeat problem spots (2+ requests)</p>
+            {repeatSpots.length ? (
+              repeatSpots.map((c) => (
+                <div key={c.label} className="flex items-center justify-between border-b border-[#edf1f3] py-2 text-sm">
+                  <span className="text-[#31546b]">{c.label}</span>
+                  <strong className="text-[#bd3c2d]">{c.count} requests</strong>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-[#8aa0ae]">No room or door has been reported more than once.</p>
+            )}
+          </div>
+        </Card>
+      </div>
+    </Page>
+  )
+}
+
 function Profile({ user, onSave }: { user: Employee; onSave: (name: string) => Promise<void> }) {
   const [name, setName] = useState(user.name)
   const [saving, setSaving] = useState(false)
@@ -2554,6 +2986,7 @@ export default function PageRoot() {
   const [technicianUsers, setTechnicianUsers] = useState<Employee[]>([])
   const [seniorTechnicians, setSeniorTechnicians] = useState<Employee[]>([])
   const [admins, setAdmins] = useState<Employee[]>([])
+  const [itManagers, setItManagers] = useState<Employee[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [settings, setSettings] = useState<ServiceDeskSettings | null>(null)
@@ -2565,6 +2998,8 @@ export default function PageRoot() {
   const role =
     user?.role === 'Administrator'
       ? 'admin'
+      : user?.role === 'IT Manager'
+      ? 'it_manager'
       : user?.role === 'Senior Technician'
       ? 'senior_technician'
       : user?.role === 'Technician'
@@ -2605,6 +3040,8 @@ export default function PageRoot() {
             setActive(
               profile.role === 'Administrator'
                 ? 'Overview'
+                : profile.role === 'IT Manager'
+                ? 'Manager overview'
                 : profile.role === 'Senior Technician'
                 ? 'Service desk monitor'
                 : profile.role === 'Technician'
@@ -2637,6 +3074,7 @@ export default function PageRoot() {
         setTechnicianUsers([])
         setSeniorTechnicians([])
         setAdmins([])
+        setItManagers([])
         setActivities([])
         setArticles([])
         setSettings(null)
@@ -2670,6 +3108,7 @@ export default function PageRoot() {
         setTechnicianUsers(people.filter((p) => p.role === 'Technician'))
         setSeniorTechnicians(people.filter((p) => p.role === 'Senior Technician'))
         setAdmins(people.filter((p) => p.role === 'Administrator'))
+        setItManagers(people.filter((p) => p.role === 'IT Manager'))
         setTickets(dbTickets)
         setActivities(dbActivities)
         setArticles(dbArticles)
@@ -2782,6 +3221,7 @@ export default function PageRoot() {
     setTechnicianUsers(people.filter((p) => p.role === 'Technician'))
     setSeniorTechnicians(people.filter((p) => p.role === 'Senior Technician'))
     setAdmins(people.filter((p) => p.role === 'Administrator'))
+    setItManagers(people.filter((p) => p.role === 'IT Manager'))
   }
 
   const deleteTeamMemberHandler = async (id: string) => {
@@ -2790,6 +3230,7 @@ export default function PageRoot() {
     setTechnicianUsers((prev) => prev.filter((p) => p.id !== id))
     setSeniorTechnicians((prev) => prev.filter((p) => p.id !== id))
     setAdmins((prev) => prev.filter((p) => p.id !== id))
+    setItManagers((prev) => prev.filter((p) => p.id !== id))
   }
 
   const createArticleHandler = async (input: { title: string; category: string; body: string }) => {
@@ -2892,6 +3333,7 @@ export default function PageRoot() {
         technicians={technicianUsers}
         seniorTechnicians={seniorTechnicians}
         admins={admins}
+        itManagers={itManagers}
         onAddMember={addTeamMember}
         onDeleteMember={deleteTeamMemberHandler}
         user={user}
@@ -2904,6 +3346,9 @@ export default function PageRoot() {
         onCreateTicket={submitAdminTicket}
       />
     )
+  } else if (role === 'it_manager') {
+    // Read-only oversight: reports, workload and forgotten (3+ day) tickets.
+    content = <ManagerWorkspace tickets={tickets} technicians={technicianUsers} user={user} active={active} setActive={go} />
   } else if (role === 'senior_technician') {
     // Read-only monitor: no assignment, status, or profile controls — just
     // every assigned issue grouped by technician, with a delete action.
