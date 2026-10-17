@@ -3015,12 +3015,12 @@ export default function PageRoot() {
   const [settings, setSettings] = useState<ServiceDeskSettings | null>(null)
   const [authChecking, setAuthChecking] = useState(true)
   const [dataLoading, setDataLoading] = useState(false)
-  // Keep the branded loading screen up for at least 2 seconds after sign-in / session restore
+  // Keep the branded loading screen up for at least 4 seconds after sign-in / session restore
   const [minLoadDone, setMinLoadDone] = useState(false)
   useEffect(() => {
     setMinLoadDone(false)
     if (!user?.id) return
-    const t = setTimeout(() => setMinLoadDone(true), 2000)
+    const t = setTimeout(() => setMinLoadDone(true), 4000)
     return () => clearTimeout(t)
   }, [user?.id])
   const [loadError, setLoadError] = useState<string | null>(null)
