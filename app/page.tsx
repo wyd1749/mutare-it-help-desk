@@ -104,6 +104,29 @@ function Brand({ compact = false }: { compact?: boolean }) {
   )
 }
 
+// Full-screen loading state: the council crest with a ring spinning around it.
+// Shown while the session is checked and while service desk data loads.
+function LoadingScreen({ message }: { message: string }) {
+  return (
+    <div role="status" aria-live="polite" className="flex min-h-screen flex-col items-center justify-center bg-[#f4f7fa] px-6 text-center">
+      <div className="relative flex size-36 items-center justify-center">
+        {/* faint track */}
+        <div className="absolute inset-0 rounded-full border-[5px] border-[#dce7ed]" />
+        {/* main spinning arc */}
+        <div className="absolute inset-0 animate-spin rounded-full border-[5px] border-transparent border-t-[#24769f] motion-reduce:animate-none" style={{ animationDuration: '1.1s' }} />
+        {/* slower gold arc, turning the other way */}
+        <div className="absolute inset-3 animate-spin rounded-full border-[3px] border-transparent border-b-[#d9b44a] motion-reduce:animate-none" style={{ animationDuration: '1.8s', animationDirection: 'reverse' }} />
+        <div className="flex size-24 items-center justify-center overflow-hidden rounded-full bg-white shadow-[0_8px_24px_rgba(20,53,77,.12)]">
+          <img src={crestUrl} alt="Mutare City Council crest" className="size-[84px] object-contain" />
+        </div>
+      </div>
+      <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.17em] text-[#d9b44a]">Mutare City Council</p>
+      <p className="mt-1 font-serif text-xl font-bold text-[#183148]">IT Service Desk</p>
+      <p className="mt-3 text-sm text-[#71899a]">{message}</p>
+    </div>
+  )
+}
+
 function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -3283,7 +3306,7 @@ export default function PageRoot() {
         </div>
       </div>
     )
-  if (authChecking) return <div className="flex min-h-screen items-center justify-center bg-[#f4f7fa] text-sm text-[#71899a]">Checking your session…</div>
+  if (authChecking) return <LoadingScreen message="Checking your session…" />
   if (profileMissing)
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f4f7fa] p-6">
@@ -3299,7 +3322,7 @@ export default function PageRoot() {
       </div>
     )
   if (!user) return <Login />
-  if (dataLoading) return <div className="flex min-h-screen items-center justify-center bg-[#f4f7fa] text-sm text-[#71899a]">Loading service desk data…</div>
+  if (dataLoading) return <LoadingScreen message="Loading service desk data…" />
 
   const go = (x: string) => setActive(x)
   const openCount = tickets.filter((t) => t.status !== 'Resolved').length
