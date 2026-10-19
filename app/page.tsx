@@ -3015,12 +3015,21 @@ export default function PageRoot() {
   const [settings, setSettings] = useState<ServiceDeskSettings | null>(null)
   const [authChecking, setAuthChecking] = useState(true)
   const [dataLoading, setDataLoading] = useState(false)
-  // Keep the branded loading screen up for at least 4 seconds after sign-in / session restore
-  const [minLoadDone, setMinLoadDone] = useState(false)
+  // Keep the branded loading screen up for at least MIN_LOAD_MS (3 seconds)
+  const MIN_LOAD_MS = 3000
+  const [bootDone, setBootDone] = useState(false) // first page open
+  const [minShownFor, setMinShownFor] = useState<string | null>(null) // user id whose loading screen has had its minimum time
   useEffect(() => {
-    setMinLoadDone(false)
-    if (!user?.id) return
-    const t = setTimeout(() => setMinLoadDone(true), 4000)
+    const t = setTimeout(() => setBootDone(true), MIN_LOAD_MS)
+    return () => clearTimeout(t)
+  }, [])
+  useEffect(() => {
+    if (!user?.id) {
+      setMinShownFor(null)
+      return
+    }
+    const id = user.id
+    const t = setTimeout(() => setMinShownFor(id), MIN_LOAD_MS)
     return () => clearTimeout(t)
   }, [user?.id])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -3314,7 +3323,7 @@ export default function PageRoot() {
         </div>
       </div>
     )
-  if (authChecking) return <LoadingScreen message="Checking your session…" />
+  if (authChecking || (!user && !profileMissing && !bootDone)) return <LoadingScreen message="Checking your session…" />
   if (profileMissing)
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f4f7fa] p-6">
@@ -3330,7 +3339,7 @@ export default function PageRoot() {
       </div>
     )
   if (!user) return <Login />
-  if (dataLoading || !minLoadDone) return <LoadingScreen message="Loading service desk data…" />
+  if (dataLoading || minShownFor !== user.id) return <LoadingScreen message="Loading service desk data…" />
 
   const go = (x: string) => setActive(x)
   const openCount = tickets.filter((t) => t.status !== 'Resolved').length
