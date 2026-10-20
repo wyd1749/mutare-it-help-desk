@@ -68,7 +68,36 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 const crestUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGPT%20Image%20Sep%2010%2C%202026%2C%2005_59_02%20PM-fpjbEi391Jxs3WlrCYOJWR7EJ3F9LH.png'
-type Role = 'employee' | 'admin' | 'technician' | 'senior_technician' | 'it_manager'
+type Role = 'employee' | 'admin' | 'technician' | 'senior_technician' | 'it_manager' | 'network_admin' | 'system_admin' | 'web_admin'
+
+// Request types only a specialist administrator may handle (shared queue per role).
+// Technicians never see these. Keep in sync with public.specialist_role_for() in the database.
+const SPECIALIST_CATEGORIES: Record<string, string> = {
+  'Locked Promun account': 'System Administrator',
+  'LADS problems': 'System Administrator',
+  'Microsoft 365 setup / password reset': 'Web Services Administrator',
+  'Wi-Fi password': 'Network Administrator',
+}
+const SPECIALIST_ROLES = ['Network Administrator', 'System Administrator', 'Web Services Administrator']
+const GENERAL_CATEGORIES = ['Network & connectivity', 'Email & communication', 'Hardware & devices', 'Access & security', 'Software & applications', 'Other IT issue']
+const isSpecialistRole = (r: Role) => r === 'network_admin' || r === 'system_admin' || r === 'web_admin'
+
+function CategoryOptions() {
+  return (
+    <>
+      <optgroup label="General IT issues">
+        {GENERAL_CATEGORIES.map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </optgroup>
+      <optgroup label="Specialist requests (administrators only)">
+        {Object.keys(SPECIALIST_CATEGORIES).map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </optgroup>
+    </>
+  )
+}
 type Status = 'Open' | 'In progress' | 'Resolved'
 type Priority = 'Critical' | 'High' | 'Medium' | 'Low'
 type Ticket = { id: string; title: string; category: string; requester: string; department: string; doorNumber: string; time: string; reportedAt?: string; priority: Priority; status: Status; assignee: string; description: string }
@@ -254,6 +283,8 @@ function Sidebar({
       ? [['Overview', LayoutDashboard], ['All requests', ClipboardList], ['Knowledge base', BookOpen], ['Team settings', Users], ['Reports', FileText]]
       : role === 'technician'
       ? [['My tasks', LayoutDashboard], ['Assigned requests', ClipboardList], ['Knowledge base', BookOpen], ['My profile', UserRound]]
+      : isSpecialistRole(role)
+      ? [['My queue', LayoutDashboard], ['Knowledge base', BookOpen], ['My profile', UserRound]]
       : role === 'it_manager'
       ? [['Manager overview', LayoutDashboard], ['All requests', ClipboardList], ['Reports', FileText]]
       : role === 'senior_technician'
@@ -298,7 +329,7 @@ function Sidebar({
             </button>
           ))}
         </nav>
-        {role !== 'senior_technician' && role !== 'it_manager' && (
+        {role !== 'senior_technician' && role !== 'it_manager' && !isSpecialistRole(role) && (
           <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-[#d9b44a]/20 text-[#e6c65f]">
               <HelpCircle size={18} />
@@ -329,6 +360,12 @@ function Header({
   const role =
     user.role === 'Administrator'
       ? 'admin'
+      : user.role === 'Network Administrator'
+      ? 'network_admin'
+      : user.role === 'System Administrator'
+      ? 'system_admin'
+      : user.role === 'Web Services Administrator'
+      ? 'web_admin'
       : user.role === 'IT Manager'
       ? 'it_manager'
       : user.role === 'Senior Technician'
@@ -339,6 +376,12 @@ function Header({
   const label =
     role === 'admin'
       ? 'Administrator workspace'
+      : role === 'network_admin'
+      ? 'Network Administrator workspace'
+      : role === 'system_admin'
+      ? 'System Administrator workspace'
+      : role === 'web_admin'
+      ? 'Web Services Administrator workspace'
       : role === 'it_manager'
       ? 'IT Manager workspace'
       : role === 'senior_technician'
@@ -522,13 +565,13 @@ function NewRequest({
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Issue category">
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
-              <option>Network & connectivity</option>
-              <option>Email & communication</option>
-              <option>Hardware & devices</option>
-              <option>Access & security</option>
-              <option>Software & applications</option>
-              <option>Other IT issue</option>
+              <CategoryOptions />
             </select>
+            {SPECIALIST_CATEGORIES[category] && (
+              <p className="mt-2 text-xs font-semibold text-[#a76500]">
+                This goes straight to the {SPECIALIST_CATEGORIES[category]}. Technicians cannot handle it.
+              </p>
+            )}
           </Field>
           <Field label="Location">
             <select value={location} onChange={(e) => setLocation(e.target.value)} className="input">
@@ -595,6 +638,7 @@ function NewAdminTicket({
   technicians,
   seniorTechnicians,
   admins,
+  specialists,
 }: {
   onBack: () => void
   onSubmit: (t: NewAdminTicketInput) => Promise<Ticket>
@@ -602,6 +646,7 @@ function NewAdminTicket({
   technicians: Employee[]
   seniorTechnicians: Employee[]
   admins: Employee[]
+  specialists: Employee[]
 }) {
   // Anyone in the council can be the requester on an admin-filed ticket —
   // not just employees. Group them so the dropdown stays readable.
@@ -610,8 +655,9 @@ function NewAdminTicket({
     { label: 'Technicians', people: technicians },
     { label: 'Senior technicians', people: seniorTechnicians },
     { label: 'Administrators', people: admins },
+    { label: 'Specialist administrators', people: specialists },
   ].filter((g) => g.people.length > 0)
-  const allRequesters = [...employees, ...technicians, ...seniorTechnicians, ...admins]
+  const allRequesters = [...employees, ...technicians, ...seniorTechnicians, ...admins, ...specialists]
 
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<Priority>('Medium')
@@ -625,6 +671,9 @@ function NewAdminTicket({
   const [error, setError] = useState('')
   const [created, setCreated] = useState<Ticket | null>(null)
   const doorError = doorDetailError(doorNumber)
+  // Specialist request types go to a role's shared queue, never to a technician.
+  const routedRole = SPECIALIST_CATEGORIES[category]
+  const assignable = routedRole ? specialists.filter((s) => s.role === routedRole) : technicians
 
   if (created)
     return (
@@ -706,13 +755,8 @@ function NewAdminTicket({
             </select>
           </Field>
           <Field label="Issue category">
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
-              <option>Network & connectivity</option>
-              <option>Email & communication</option>
-              <option>Hardware & devices</option>
-              <option>Access & security</option>
-              <option>Software & applications</option>
-              <option>Other IT issue</option>
+            <select value={category} onChange={(e) => { setCategory(e.target.value); setAssigneeId('') }} className="input">
+              <CategoryOptions />
             </select>
           </Field>
           <Field label="Urgency">
@@ -746,13 +790,14 @@ function NewAdminTicket({
           </Field>
           <Field label="Assign to (optional)" full>
             <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="input">
-              <option value="">Leave unassigned</option>
-              {technicians.map((t) => (
+              <option value="">{routedRole ? `Leave in the ${routedRole} queue` : 'Leave unassigned'}</option>
+              {assignable.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
               ))}
             </select>
+            {routedRole && <p className="mt-2 text-xs text-[#a76500]">Specialist request: any {routedRole} can take it from the shared queue, or pick one person.</p>}
           </Field>
           <Field label="Describe the issue" full>
             <textarea
@@ -876,6 +921,7 @@ function AdminWorkspace({
   seniorTechnicians,
   admins,
   itManagers,
+  specialists,
   onAddMember,
   onDeleteMember,
   user,
@@ -897,6 +943,7 @@ function AdminWorkspace({
   seniorTechnicians: Employee[]
   admins: Employee[]
   itManagers: Employee[]
+  specialists: Employee[]
   onAddMember: (m: NewMember) => Promise<void>
   onDeleteMember: (id: string) => Promise<void>
   user: Employee
@@ -917,6 +964,7 @@ function AdminWorkspace({
         technicians={technicians}
         seniorTechnicians={seniorTechnicians}
         admins={admins}
+        specialists={specialists}
       />
     )
   }
@@ -931,6 +979,7 @@ function AdminWorkspace({
         seniorTechnicians={seniorTechnicians}
         admins={admins}
         itManagers={itManagers}
+        specialists={specialists}
         onAddMember={onAddMember}
         onDeleteMember={onDeleteMember}
         settings={settings}
@@ -941,7 +990,7 @@ function AdminWorkspace({
   if (active === 'Reports') {
     return <Reports tickets={tickets} />
   }
-  return <AdminQueue tickets={tickets} onSaveTicket={onSaveTicket} onDeleteTicket={onDeleteTicket} overview={active === 'Overview'} go={setActive} technicians={technicians} user={user} />
+  return <AdminQueue tickets={tickets} onSaveTicket={onSaveTicket} onDeleteTicket={onDeleteTicket} overview={active === 'Overview'} go={setActive} technicians={technicians} specialists={specialists} user={user} />
 }
 
 
@@ -953,6 +1002,7 @@ function AdminQueue({
   overview,
   go,
   technicians,
+  specialists,
   user,
 }: {
   tickets: Ticket[]
@@ -961,6 +1011,7 @@ function AdminQueue({
   overview: boolean
   go: (x: string) => void
   technicians: Employee[]
+  specialists: Employee[]
   user: Employee
 }) {
   const [query, setQuery] = useState('')
@@ -997,6 +1048,7 @@ function AdminQueue({
       <TicketDetail
         ticket={selected}
         technicians={technicians}
+        specialists={specialists}
         user={user}
         onBack={() => setSelectedId(null)}
         onSave={onSaveTicket}
@@ -1075,6 +1127,8 @@ function AdminQueue({
 function TicketDetail({
   ticket,
   technicians,
+  specialists,
+  canClaim = false,
   user,
   onBack,
   onSave,
@@ -1082,6 +1136,8 @@ function TicketDetail({
 }: {
   ticket: Ticket
   technicians: Employee[]
+  specialists?: Employee[]
+  canClaim?: boolean
   user: Employee
   onBack: () => void
   onSave: (t: Ticket) => Promise<void>
@@ -1101,6 +1157,9 @@ function TicketDetail({
   // Only administrators may reassign tickets. Technicians and other users
   // see the current assignee as read-only text — never an editable control.
   const isAdmin = user.role === 'Administrator'
+  // Specialist request types can only go to the matching specialist role.
+  const routedRole = SPECIALIST_CATEGORIES[ticket.category]
+  const assignOptions = routedRole ? (specialists ?? []).filter((s) => s.role === routedRole) : technicians
 
   useEffect(() => {
     let cancelled = false
@@ -1127,6 +1186,22 @@ function TicketDetail({
       setTimeout(() => setSaved(false), 2200)
     } catch (err: any) {
       setError(err?.message || 'Could not save your changes. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const claim = async () => {
+    setError('')
+    setSaving(true)
+    try {
+      const next: Ticket = { ...draft, assignee: user.name, status: 'In progress' }
+      await onSave(next)
+      setDraft(next)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2200)
+    } catch (err: any) {
+      setError(err?.message || 'Could not take this request. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -1219,7 +1294,7 @@ function TicketDetail({
         </Card>
         <Card>
           <h2 className="font-serif text-lg font-bold">Manage request</h2>
-          <label className="mt-5 block text-sm font-semibold">Assign to technician</label>
+          <label className="mt-5 block text-sm font-semibold">{canClaim ? 'Handled by' : routedRole ? `Assign to a ${routedRole}` : 'Assign to technician'}</label>
           {isAdmin ? (
             <select
               value={draft.assignee}
@@ -1227,16 +1302,27 @@ function TicketDetail({
               className="input mt-2"
             >
               <option>Unassigned</option>
-              {technicians.map((t) => (
+              {assignOptions.map((t) => (
                 <option key={t.id} value={t.name}>
                   {t.name}
                 </option>
               ))}
             </select>
           ) : (
-            <p className="mt-2 rounded-xl border border-[#dce7ed] bg-[#f7fafb] px-4 py-2.5 text-sm font-semibold text-[#26465d]">
-              {draft.assignee === 'Unassigned' ? 'Not yet assigned' : draft.assignee}
-            </p>
+            <>
+              <p className="mt-2 rounded-xl border border-[#dce7ed] bg-[#f7fafb] px-4 py-2.5 text-sm font-semibold text-[#26465d]">
+                {draft.assignee === 'Unassigned' ? (canClaim ? 'Waiting in the shared queue' : 'Not yet assigned') : draft.assignee}
+              </p>
+              {canClaim && draft.assignee === 'Unassigned' && (
+                <button
+                  disabled={saving}
+                  onClick={claim}
+                  className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#102f4a] text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {saving ? 'Taking…' : 'Take this request'} <CheckCircle2 size={16} />
+                </button>
+              )}
+            </>
           )}
           <label className="mt-5 block text-sm font-semibold">Status</label>
           <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Status })} className="input mt-2">
@@ -1783,7 +1869,7 @@ function KnowledgeBase({
   )
 }
 
-type NewMember = { name: string; email: string; department: string; role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician' | 'IT Manager'; password: string }
+type NewMember = { name: string; email: string; department: string; role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician' | 'IT Manager' | 'Network Administrator' | 'System Administrator' | 'Web Services Administrator'; password: string }
 const emptyMember: NewMember = { name: '', email: '', department: 'Finance', role: 'Employee', password: '' }
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
@@ -1866,6 +1952,7 @@ function TeamSettings({
   seniorTechnicians,
   admins,
   itManagers,
+  specialists,
   onAddMember,
   onDeleteMember,
   settings,
@@ -1876,6 +1963,7 @@ function TeamSettings({
   seniorTechnicians: Employee[]
   admins: Employee[]
   itManagers: Employee[]
+  specialists: Employee[]
   onAddMember: (m: NewMember) => Promise<void>
   onDeleteMember: (id: string) => Promise<void>
   settings: ServiceDeskSettings | null
@@ -1941,7 +2029,7 @@ function TeamSettings({
   }
 
   return (
-    <Page title="Team settings" eyebrow="Administration" sub="Create accounts for employees, technicians, senior technicians, IT managers and administrators, and manage service desk preferences.">
+    <Page title="Team settings" eyebrow="Administration" sub="Create accounts for employees, technicians, senior technicians, IT managers, specialist administrators and administrators, and manage service desk preferences.">
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="font-serif text-xl font-bold">Team accounts</h2>
@@ -1975,6 +2063,9 @@ function TeamSettings({
                 <option>Technician</option>
                 <option>Senior Technician</option>
                 <option>IT Manager</option>
+                <option>Network Administrator</option>
+                <option>System Administrator</option>
+                <option>Web Services Administrator</option>
                 <option>Administrator</option>
               </select>
             </Field>
@@ -2030,6 +2121,24 @@ function TeamSettings({
         title="IT managers"
         note="Read-only overview of every request, technician workload and forgotten tickets."
         people={itManagers}
+        onDeleteMember={onDeleteMember}
+      />
+      <PeopleList
+        title="Network administrators"
+        note="Handle Wi-Fi password requests. Cannot see anything else."
+        people={specialists.filter((p) => p.role === 'Network Administrator')}
+        onDeleteMember={onDeleteMember}
+      />
+      <PeopleList
+        title="System administrators"
+        note="Handle locked Promun accounts and LADS problems. Cannot see anything else."
+        people={specialists.filter((p) => p.role === 'System Administrator')}
+        onDeleteMember={onDeleteMember}
+      />
+      <PeopleList
+        title="Web services administrators"
+        note="Handle Microsoft 365 account setup and password resets. Cannot see anything else."
+        people={specialists.filter((p) => p.role === 'Web Services Administrator')}
         onDeleteMember={onDeleteMember}
       />
       <PeopleList title="Employees" note="Can report issues and track their own requests." people={employees} onDeleteMember={onDeleteMember} />
@@ -2824,6 +2933,143 @@ function ManagerWorkspace({
   )
 }
 
+// --- Specialist administrators (Network / System / Web Services) -------------------
+// They share a queue of the request types their role owns. The database only lets
+// them see those tickets; technicians and senior technicians never do.
+
+type SpecialistFilter = 'unclaimed' | 'mine' | 'resolved' | 'all'
+
+function SpecialistWorkspace({
+  tickets,
+  onSaveTicket,
+  active,
+  user,
+  articles,
+  onSaveProfile,
+}: {
+  tickets: Ticket[]
+  onSaveTicket: (t: Ticket) => Promise<void>
+  active: string
+  user: Employee
+  articles: Article[]
+  onSaveProfile: (name: string) => Promise<void>
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<SpecialistFilter>('unclaimed')
+  const [claimingId, setClaimingId] = useState<string | null>(null)
+  const [claimError, setClaimError] = useState('')
+
+  if (active === 'Knowledge base') return <KnowledgeBase articles={articles} />
+  if (active === 'My profile') return <Profile user={user} onSave={onSaveProfile} />
+
+  const myTypes = Object.entries(SPECIALIST_CATEGORIES)
+    .filter(([, role]) => role === user.role)
+    .map(([category]) => category)
+  // The database already limits this list; filtering again keeps the admin's own
+  // personal requests (if any) out of the shared queue.
+  const queue = tickets.filter((t) => SPECIALIST_CATEGORIES[t.category] === user.role)
+  const open = queue.filter((t) => t.status !== 'Resolved')
+  const unclaimed = open.filter((t) => t.assignee === 'Unassigned')
+  const mine = open.filter((t) => t.assignee === user.name)
+  const resolved = queue.filter((t) => t.status === 'Resolved')
+
+  const selected = selectedId ? tickets.find((t) => t.id === selectedId) ?? null : null
+  if (selected) return <TicketDetail ticket={selected} technicians={[]} user={user} canClaim onBack={() => setSelectedId(null)} onSave={onSaveTicket} />
+
+  const claim = async (t: Ticket) => {
+    setClaimError('')
+    setClaimingId(t.id)
+    try {
+      await onSaveTicket({ ...t, assignee: user.name, status: 'In progress' })
+      setFilter('mine')
+    } catch (err: any) {
+      setClaimError(err?.message || 'Could not take this request. Please try again.')
+    } finally {
+      setClaimingId(null)
+    }
+  }
+
+  const rows = filter === 'unclaimed' ? unclaimed : filter === 'mine' ? mine : filter === 'resolved' ? resolved : queue
+  const chips: [SpecialistFilter, string, number][] = [
+    ['unclaimed', 'Waiting in queue', unclaimed.length],
+    ['mine', 'Taken by me', mine.length],
+    ['resolved', 'Resolved', resolved.length],
+    ['all', 'All', queue.length],
+  ]
+
+  return (
+    <Page
+      title={`${user.role} queue`}
+      eyebrow={`${getGreeting()}, ${user.name.split(' ')[0]}`}
+      sub="These requests can only be handled by your role. Take one to start working on it, then mark it resolved."
+    >
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <Stat dark label="Waiting in queue" value={String(unclaimed.length)} note="Nobody has taken these yet" />
+        <Stat label="Taken by me" value={String(mine.length)} note="Currently in progress" />
+        <Stat label="Resolved" value={String(resolved.length)} note="All time" />
+      </div>
+      <p className="mb-5 text-xs text-[#71899a]">
+        Request types you handle: <strong className="text-[#31546b]">{myTypes.join(' · ') || 'none'}</strong>
+      </p>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {chips.map(([key, label, count]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`rounded-full border px-3.5 py-1.5 text-xs font-bold ${
+              filter === key ? 'border-[#102f4a] bg-[#102f4a] text-white' : 'border-[#dce7ed] bg-white text-[#31546b] hover:bg-[#f4f8fa]'
+            }`}
+          >
+            {label} <span className="opacity-70">{count}</span>
+          </button>
+        ))}
+      </div>
+      {claimError && <p className="mb-4 rounded-lg bg-[#fff0ee] px-3 py-2 text-xs font-semibold text-[#bd3c2d]">{claimError}</p>}
+      <Card>
+        <div className="divide-y divide-[#edf1f3]">
+          {rows.length ? (
+            rows.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 px-1 py-4 hover:bg-[#f8fbfc] sm:gap-4">
+                <button onClick={() => setSelectedId(t.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left sm:gap-4">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eaf4f8] text-[#24769f]">
+                    <ClipboardList size={17} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-[#31546b]">{t.title}</p>
+                    <p className="mt-1 text-xs text-[#8aa0ae]">
+                      {t.id} · {t.category} · {t.requester}
+                      {t.doorNumber ? ` · ${t.doorNumber}` : ''} · {t.time}
+                    </p>
+                  </div>
+                </button>
+                {t.status !== 'Resolved' && t.assignee === 'Unassigned' ? (
+                  <button
+                    disabled={claimingId === t.id}
+                    onClick={() => claim(t)}
+                    className="shrink-0 rounded-xl bg-[#24769f] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+                  >
+                    {claimingId === t.id ? 'Taking…' : 'Take it'}
+                  </button>
+                ) : (
+                  <div className="shrink-0 text-right">
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${statusClass[t.status]}`}>{t.status}</span>
+                    <p className="mt-1 text-[11px] text-[#8aa0ae]">{t.assignee === user.name ? 'You' : t.assignee}</p>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <Empty
+              title={filter === 'unclaimed' ? 'Queue is clear' : 'Nothing here'}
+              text={filter === 'unclaimed' ? 'New requests for your role will appear here automatically.' : 'No requests match this filter.'}
+            />
+          )}
+        </div>
+      </Card>
+    </Page>
+  )
+}
+
 function Profile({ user, onSave }: { user: Employee; onSave: (name: string) => Promise<void> }) {
   const [name, setName] = useState(user.name)
   const [saving, setSaving] = useState(false)
@@ -3010,6 +3256,7 @@ export default function PageRoot() {
   const [seniorTechnicians, setSeniorTechnicians] = useState<Employee[]>([])
   const [admins, setAdmins] = useState<Employee[]>([])
   const [itManagers, setItManagers] = useState<Employee[]>([])
+  const [specialists, setSpecialists] = useState<Employee[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [settings, setSettings] = useState<ServiceDeskSettings | null>(null)
@@ -3038,6 +3285,12 @@ export default function PageRoot() {
   const role =
     user?.role === 'Administrator'
       ? 'admin'
+      : user?.role === 'Network Administrator'
+      ? 'network_admin'
+      : user?.role === 'System Administrator'
+      ? 'system_admin'
+      : user?.role === 'Web Services Administrator'
+      ? 'web_admin'
       : user?.role === 'IT Manager'
       ? 'it_manager'
       : user?.role === 'Senior Technician'
@@ -3080,6 +3333,8 @@ export default function PageRoot() {
             setActive(
               profile.role === 'Administrator'
                 ? 'Overview'
+                : SPECIALIST_ROLES.includes(profile.role)
+                ? 'My queue'
                 : profile.role === 'IT Manager'
                 ? 'Manager overview'
                 : profile.role === 'Senior Technician'
@@ -3115,6 +3370,7 @@ export default function PageRoot() {
         setSeniorTechnicians([])
         setAdmins([])
         setItManagers([])
+        setSpecialists([])
         setActivities([])
         setArticles([])
         setSettings(null)
@@ -3149,6 +3405,7 @@ export default function PageRoot() {
         setSeniorTechnicians(people.filter((p) => p.role === 'Senior Technician'))
         setAdmins(people.filter((p) => p.role === 'Administrator'))
         setItManagers(people.filter((p) => p.role === 'IT Manager'))
+        setSpecialists(people.filter((p) => SPECIALIST_ROLES.includes(p.role)))
         setTickets(dbTickets)
         setActivities(dbActivities)
         setArticles(dbArticles)
@@ -3207,9 +3464,9 @@ export default function PageRoot() {
 
   const submitAdminTicket = async (input: NewAdminTicketInput): Promise<Ticket> => {
     if (!user) throw new Error('You are signed out. Please sign in again.')
-    const requester = [...employees, ...technicianUsers, ...seniorTechnicians, ...admins].find((p) => p.id === input.requesterId)
+    const requester = [...employees, ...technicianUsers, ...seniorTechnicians, ...admins, ...specialists].find((p) => p.id === input.requesterId)
     if (!requester) throw new Error('Select who this ticket is for.')
-    const assignee = input.assigneeId ? technicianUsers.find((t) => t.id === input.assigneeId) : undefined
+    const assignee = input.assigneeId ? [...technicianUsers, ...specialists].find((t) => t.id === input.assigneeId) : undefined
 
     // Single insert carries the assignee straight into the row — no
     // separate update-by-name step that can silently miss.
@@ -3233,7 +3490,7 @@ export default function PageRoot() {
   }
 
   const saveTicket = async (updated: Ticket): Promise<void> => {
-    await dbUpdateTicket(updated, [...employees, ...technicianUsers])
+    await dbUpdateTicket(updated, [...employees, ...technicianUsers, ...specialists])
     setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
     if (user) {
       const note = updated.assignee === 'Unassigned' ? `Set ${updated.id} to ${updated.status}` : `Updated ${updated.id}: ${updated.status} · assigned to ${updated.assignee}`
@@ -3262,6 +3519,7 @@ export default function PageRoot() {
     setSeniorTechnicians(people.filter((p) => p.role === 'Senior Technician'))
     setAdmins(people.filter((p) => p.role === 'Administrator'))
     setItManagers(people.filter((p) => p.role === 'IT Manager'))
+    setSpecialists(people.filter((p) => SPECIALIST_ROLES.includes(p.role)))
   }
 
   const deleteTeamMemberHandler = async (id: string) => {
@@ -3271,6 +3529,7 @@ export default function PageRoot() {
     setSeniorTechnicians((prev) => prev.filter((p) => p.id !== id))
     setAdmins((prev) => prev.filter((p) => p.id !== id))
     setItManagers((prev) => prev.filter((p) => p.id !== id))
+    setSpecialists((prev) => prev.filter((p) => p.id !== id))
   }
 
   const createArticleHandler = async (input: { title: string; category: string; body: string }) => {
@@ -3374,6 +3633,7 @@ export default function PageRoot() {
         seniorTechnicians={seniorTechnicians}
         admins={admins}
         itManagers={itManagers}
+        specialists={specialists}
         onAddMember={addTeamMember}
         onDeleteMember={deleteTeamMemberHandler}
         user={user}
@@ -3386,6 +3646,9 @@ export default function PageRoot() {
         onCreateTicket={submitAdminTicket}
       />
     )
+  } else if (isSpecialistRole(role)) {
+    // Shared queue for the request types this administrator role owns.
+    content = <SpecialistWorkspace tickets={tickets} onSaveTicket={saveTicket} active={active} user={user} articles={articles} onSaveProfile={saveProfile} />
   } else if (role === 'it_manager') {
     // Read-only oversight: reports, workload and forgotten (3+ day) tickets.
     content = <ManagerWorkspace tickets={tickets} technicians={technicianUsers} user={user} active={active} setActive={go} />

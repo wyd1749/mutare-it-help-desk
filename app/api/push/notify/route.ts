@@ -32,15 +32,31 @@ export async function POST(request: Request) {
     payload.type === 'INSERT' || (payload.type === 'UPDATE' && oldRecord?.assignee_id !== record.assignee_id)
   if (!newlyAssigned) return Response.json({ skipped: 'assignee unchanged' })
 
+  // Specialist requests (Promun, LADS, Microsoft 365, Wi-Fi password) are private to
+  // the specialist administrators. Never push their details to Senior Technicians.
+  const SPECIALIST_CATEGORIES = [
+    'Locked Promun account',
+    'LADS problems',
+    'Microsoft 365 setup / password reset',
+    'Wi-Fi password',
+  ]
+  if (SPECIALIST_CATEGORIES.includes(record.category)) return Response.json({ skipped: 'specialist request' })
+
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT!,
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!
   )
 
-  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  })
+  const admin = createClient(
+    // Server-side calls go straight to the Supabase gateway inside Docker
+    // (http://api-gw:8000); the public https address is for browsers only.
+    process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: { persistSession: false },
+    }
+  )
 
   const { data: subs, error } = await admin
     .from('push_subscriptions')

@@ -60,7 +60,7 @@ export async function createEmployee(input: {
   name: string
   email: string
   department: string
-  role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician' | 'IT Manager'
+  role: 'Employee' | 'Technician' | 'Administrator' | 'Senior Technician' | 'IT Manager' | 'Network Administrator' | 'System Administrator' | 'Web Services Administrator'
 }): Promise<Employee> {
   const supabase = createClient()
   const prefix =
@@ -72,6 +72,12 @@ export async function createEmployee(input: {
       ? 'CTO'
       : input.role === 'IT Manager'
       ? 'MGR'
+      : input.role === 'Network Administrator'
+      ? 'NET'
+      : input.role === 'System Administrator'
+      ? 'SYS'
+      : input.role === 'Web Services Administrator'
+      ? 'WEB'
       : 'EMP'
   const id = `${prefix}-${Date.now().toString().slice(-6)}`
   const { data, error } = await supabase
