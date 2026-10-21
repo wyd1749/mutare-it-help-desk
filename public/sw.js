@@ -46,6 +46,23 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' }
   }
 
+  // Incoming call: ring loudly and stay on screen until answered or dismissed.
+  // A notification is always shown (browsers require it for every push).
+  if (data.type === 'call') {
+    event.waitUntil(
+      self.registration.showNotification(data.title || 'Incoming call', {
+        body: data.body || 'Tap to open the service desk and answer.',
+        tag: 'incoming-call',
+        renotify: true,
+        icon: '/icons/icon-192.png',
+        requireInteraction: true,
+        vibrate: [400, 200, 400, 200, 400, 200, 400],
+        data: { url: data.url || '/' },
+      })
+    )
+    return
+  }
+
   const title = data.title || 'Check the IT service monitor'
   event.waitUntil(
     self.registration.showNotification(title, {
