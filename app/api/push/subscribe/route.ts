@@ -4,8 +4,9 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // Roles that may receive background alerts. Add 'Technician' here later if
-// assigned technicians should get pushes too.
-const ALLOWED_ROLES = ['Senior Technician']
+// assigned technicians should get pushes too. 'Administrator' is here so the
+// CTO's device can ring for incoming calls when the site is closed.
+const ALLOWED_ROLES = ['Senior Technician', 'Administrator']
 
 export async function POST(request: Request) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')

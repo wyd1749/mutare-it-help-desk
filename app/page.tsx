@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { isSupabaseConfigured } from '@/lib/supabase/client'
 import { subscribeToPush, type PushStatus } from '@/lib/push'
+import { CallProvider } from '@/components/calls'
 import { signIn, signOut, fetchCurrentEmployee, onAuthStateChange, createTeamMember } from '@/lib/supabase/auth'
 import {
   fetchEmployees as dbFetchEmployees,
@@ -3672,14 +3673,16 @@ export default function PageRoot() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f7fa] text-[#183148]">
-      <div className="flex min-h-screen">
-        <Sidebar role={role} active={active} setActive={go} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} openCount={openCount} />
-        <div className="min-w-0 flex-1">
-          <Header user={user} activities={activities} setMobileOpen={setMobileOpen} onLogout={handleLogout} />
-          {content}
+    <CallProvider me={user}>
+      <div className="min-h-screen bg-[#f4f7fa] text-[#183148]">
+        <div className="flex min-h-screen">
+          <Sidebar role={role} active={active} setActive={go} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} openCount={openCount} />
+          <div className="min-w-0 flex-1">
+            <Header user={user} activities={activities} setMobileOpen={setMobileOpen} onLogout={handleLogout} />
+            {content}
+          </div>
         </div>
       </div>
-    </div>
+    </CallProvider>
   )
 }
