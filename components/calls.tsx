@@ -74,30 +74,51 @@ function useRingtone() {
 
   const start = useCallback(() => {
     stop()
+    // A classic telephone ring: two "brrrring" bursts (440 Hz + 480 Hz tones,
+    // fluttering 20 times a second like a bell), a pause, then again.
+    const CYCLE_MS = 4000
     const beep = () => {
       try {
         const ctx = getCtx()
         void ctx.resume()
         if (ctx.state !== 'running') setLocked(true)
         const now = ctx.currentTime
-        for (const offset of [0, 0.35]) {
-          const osc = ctx.createOscillator()
-          const gain = ctx.createGain()
-          osc.frequency.value = 880
-          gain.gain.setValueAtTime(0.0001, now + offset)
-          gain.gain.exponentialRampToValueAtTime(0.4, now + offset + 0.03)
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.28)
-          osc.connect(gain).connect(ctx.destination)
-          osc.start(now + offset)
-          osc.stop(now + offset + 0.3)
+        for (const offset of [0, 1.3]) {
+          const t0 = now + offset
+          const burst = 1.0
+          const envelope = ctx.createGain()
+          envelope.gain.setValueAtTime(0.0001, t0)
+          envelope.gain.exponentialRampToValueAtTime(0.5, t0 + 0.04)
+          envelope.gain.setValueAtTime(0.5, t0 + burst - 0.06)
+          envelope.gain.exponentialRampToValueAtTime(0.0001, t0 + burst)
+          // the flutter: volume swings between 0 and 1 twenty times a second
+          const flutter = ctx.createGain()
+          flutter.gain.value = 0.5
+          const lfo = ctx.createOscillator()
+          const lfoDepth = ctx.createGain()
+          lfo.frequency.value = 20
+          lfoDepth.gain.value = 0.5
+          lfo.connect(lfoDepth).connect(flutter.gain)
+          envelope.connect(ctx.destination)
+          flutter.connect(envelope)
+          for (const hz of [440, 480]) {
+            const osc = ctx.createOscillator()
+            osc.type = 'triangle'
+            osc.frequency.value = hz
+            osc.connect(flutter)
+            osc.start(t0)
+            osc.stop(t0 + burst + 0.05)
+          }
+          lfo.start(t0)
+          lfo.stop(t0 + burst + 0.05)
         }
       } catch {
         // sound blocked; the popup and flashing tab title still show
       }
-      if ('vibrate' in navigator) navigator.vibrate([300, 150, 300])
+      if ('vibrate' in navigator) navigator.vibrate([1000, 300, 1000])
     }
     beep()
-    timerRef.current = setInterval(beep, 2200)
+    timerRef.current = setInterval(beep, CYCLE_MS)
   }, [stop])
 
   useEffect(() => stop, [stop])
