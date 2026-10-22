@@ -37,6 +37,34 @@ async function closeCallNotifications() {
 function useRingtone() {
   const ctxRef = useRef<AudioContext | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Browsers refuse to play sound until the person has clicked or pressed a
+  // key on the page. "locked" stays true until that has happened.
+  const [locked, setLocked] = useState(true)
+
+  const getCtx = () => {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    ctxRef.current = ctxRef.current ?? new Ctx()
+    return ctxRef.current
+  }
+
+  const unlock = useCallback(() => {
+    try {
+      const ctx = getCtx()
+      void ctx.resume().then(() => setLocked(ctx.state !== 'running'))
+    } catch {
+      // no audio support
+    }
+  }, [])
+
+  useEffect(() => {
+    const handler = () => unlock()
+    window.addEventListener('pointerdown', handler, { passive: true })
+    window.addEventListener('keydown', handler)
+    return () => {
+      window.removeEventListener('pointerdown', handler)
+      window.removeEventListener('keydown', handler)
+    }
+  }, [unlock])
 
   const stop = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -48,24 +76,23 @@ function useRingtone() {
     stop()
     const beep = () => {
       try {
-        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-        ctxRef.current = ctxRef.current ?? new Ctx()
-        const ctx = ctxRef.current
+        const ctx = getCtx()
         void ctx.resume()
+        if (ctx.state !== 'running') setLocked(true)
         const now = ctx.currentTime
         for (const offset of [0, 0.35]) {
           const osc = ctx.createOscillator()
           const gain = ctx.createGain()
           osc.frequency.value = 880
           gain.gain.setValueAtTime(0.0001, now + offset)
-          gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.03)
+          gain.gain.exponentialRampToValueAtTime(0.4, now + offset + 0.03)
           gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.28)
           osc.connect(gain).connect(ctx.destination)
           osc.start(now + offset)
           osc.stop(now + offset + 0.3)
         }
       } catch {
-        // Autoplay can be blocked until the person taps something; the popup still shows.
+        // sound blocked; the popup and flashing tab title still show
       }
       if ('vibrate' in navigator) navigator.vibrate([300, 150, 300])
     }
@@ -74,7 +101,7 @@ function useRingtone() {
   }, [stop])
 
   useEffect(() => stop, [stop])
-  return { start, stop }
+  return { start, stop, locked, unlock }
 }
 
 function formatClock(totalSeconds: number) {
@@ -123,6 +150,8 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
   const pendingIce = useRef<RTCIceCandidateInit[]>([])
   const ringTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reRing = useRef<ReturnType<typeof setInterval> | null>(null)
+  const titleTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const origTitle = useRef<string>('')
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const ringtone = useRingtone()
 
@@ -151,6 +180,9 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
     if (reRing.current) clearInterval(reRing.current)
     reRing.current = null
     void closeCallNotifications()
+    if (titleTimer.current) clearInterval(titleTimer.current)
+    titleTimer.current = null
+    if (origTitle.current) document.title = origTitle.current
     ringtone.stop()
     pcRef.current?.close()
     pcRef.current = null
@@ -355,6 +387,13 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
     setPeer({ id: row.caller_id, name: row.caller_name ?? 'A colleague' })
     setPhaseBoth('incoming')
     ringtone.start()
+    // Flash the tab title so a call is noticed even from another tab.
+    origTitle.current = origTitle.current || document.title
+    let flip = false
+    titleTimer.current = setInterval(() => {
+      flip = !flip
+      document.title = flip ? `Incoming call: ${row.caller_name ?? 'a colleague'}` : origTitle.current
+    }, 900)
     const remaining = Math.max(1000, RING_TIMEOUT_MS - (Date.now() - new Date(row.created_at).getTime()))
     ringTimeout.current = setTimeout(() => {
       if (phaseRef.current === 'incoming') {
@@ -524,6 +563,14 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               {notice}
             </div>
           )}
+          {ringtone.locked && (
+            <button
+              onClick={ringtone.unlock}
+              className="flex items-center gap-2 rounded-full border border-[#f0d9a0] bg-[#fff8e6] px-4 py-2 text-xs font-bold text-[#8a6410] shadow-[0_8px_20px_rgba(20,53,77,.14)] hover:bg-[#fff1cc]"
+            >
+              <Bell size={14} /> Click to turn on the ringtone sound
+            </button>
+          )}
           {pickerOpen && targets.length > 0 && (
             <div className="w-72 rounded-2xl border border-[#dce7ed] bg-white p-2 shadow-[0_18px_45px_rgba(20,53,77,.18)]">
               <p className="px-3 py-2 text-xs font-bold text-[#648096]">Who do you want to call?</p>
@@ -594,6 +641,11 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
             {phase === 'live' && formatClock(seconds)}
           </p>
           <p className="mt-1 font-serif text-2xl font-bold">{peer.name}</p>
+          {phase === 'incoming' && ringtone.locked && (
+            <button onClick={ringtone.unlock} className="mt-2 w-full rounded-lg bg-white/10 px-3 py-2 text-left text-xs font-bold text-[#ffe3a3] hover:bg-white/20">
+              Your browser is blocking the ringtone. Click here to turn the sound on.
+            </button>
+          )}
           {phase === 'calling' && <p className="mt-1 text-sm text-[#b8d2df]">Ringing. They have {RING_TIMEOUT_MS / 1000} seconds to answer.</p>}
           {phase === 'live' && muted && <p className="mt-1 text-sm text-[#f7c5bd]">Your microphone is muted.</p>}
 
