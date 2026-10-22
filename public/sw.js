@@ -54,6 +54,7 @@ self.addEventListener('push', (event) => {
         body: data.body || 'Tap to open the service desk and answer.',
         tag: 'incoming-call',
         renotify: true,
+        silent: false,
         icon: '/icons/icon-192.png',
         requireInteraction: true,
         vibrate: [400, 200, 400, 200, 400, 200, 400],

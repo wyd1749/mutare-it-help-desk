@@ -21,6 +21,18 @@ import {
 type Phase = 'idle' | 'calling' | 'incoming' | 'connecting' | 'live'
 type Peer = { id: string; name: string }
 
+// Removes the "Incoming call" notification from the phone's notification shade
+// once the call has been dealt with inside the app.
+async function closeCallNotifications() {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration()
+    const list = await reg?.getNotifications({ tag: 'incoming-call' })
+    list?.forEach((n) => n.close())
+  } catch {
+    // not supported everywhere; harmless
+  }
+}
+
 // ---- ringtone (generated in the browser, no audio file needed) ----
 function useRingtone() {
   const ctxRef = useRef<AudioContext | null>(null)
@@ -110,6 +122,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
   const pendingIce = useRef<RTCIceCandidateInit[]>([])
   const ringTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reRing = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const ringtone = useRingtone()
 
@@ -135,6 +148,9 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
   const cleanup = useCallback(() => {
     if (ringTimeout.current) clearTimeout(ringTimeout.current)
     ringTimeout.current = null
+    if (reRing.current) clearInterval(reRing.current)
+    reRing.current = null
+    void closeCallNotifications()
     ringtone.stop()
     pcRef.current?.close()
     pcRef.current = null
@@ -203,6 +219,8 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
         // Caller side: the person called answered, so start the connection.
         if (roleRef.current !== 'caller' || pcRef.current) return
         if (ringTimeout.current) clearTimeout(ringTimeout.current)
+        if (reRing.current) clearInterval(reRing.current)
+        reRing.current = null
         setPhaseBoth('connecting')
         try {
           const pc = await buildPeer()
@@ -310,7 +328,10 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
       const row = await insertCall(me.id, target.id)
       callIdRef.current = row.id
       await openChannel(row.id)
+      // Ring their device now, then again every 9 seconds while it is still
+      // ringing, so a closed phone buzzes repeatedly like a real call.
       void ringCallee(row.id)
+      reRing.current = setInterval(() => void ringCallee(row.id), 9000)
       ringTimeout.current = setTimeout(() => {
         void endCall(`${target.name} did not answer.`)
       }, RING_TIMEOUT_MS)
@@ -328,6 +349,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
       return
     }
     incomingRef.current = row
+    void closeCallNotifications()
     callIdRef.current = row.id
     roleRef.current = 'callee'
     setPeer({ id: row.caller_id, name: row.caller_name ?? 'A colleague' })
