@@ -469,7 +469,7 @@ function EmployeeOverview({
           <CardHead title="Your recent requests" link="View all" onClick={() => go('My requests')} />
           <div className="divide-y divide-[#edf1f3]">
             {mine.length ? (
-              mine.map((t) => <TicketRow key={t.id} t={t} onClick={() => onOpen(t)} />)
+              <PagedList items={mine} render={(t) => <TicketRow t={t} onClick={() => onOpen(t)} />} />
             ) : (
               <Empty title="No requests yet" text="Your submitted issues will appear here." />
             )}
@@ -866,11 +866,7 @@ function EmployeeRequests({ tickets, onOpen, user }: { tickets: Ticket[]; onOpen
     <PageTitle eyebrow="Support history" title="My requests" sub="Track the progress of every issue you have reported.">
       <Card>
         <div className="divide-y divide-[#edf1f3]">
-          {tickets
-            .filter((t) => t.requester === user.name)
-            .map((t) => (
-              <TicketRow key={t.id} t={t} onClick={() => onOpen(t)} />
-            ))}
+          <PagedList items={tickets.filter((t) => t.requester === user.name)} render={(t) => <TicketRow t={t} onClick={() => onOpen(t)} />} />
         </div>
       </Card>
     </PageTitle>
@@ -1115,9 +1111,7 @@ function AdminQueue({
           </div>
         </div>
         <div className="divide-y divide-[#edf1f3]">
-          {filtered.map((t) => (
-            <TicketRow key={t.id} t={t} admin onClick={() => setSelectedId(t.id)} />
-          ))}
+          <PagedList items={filtered} resetKey={`${filter}|${query}`} render={(t) => <TicketRow t={t} admin onClick={() => setSelectedId(t.id)} />} />
         </div>
       </Card>
       </div>
@@ -1400,7 +1394,7 @@ function TechnicianWorkspace({
         <CardHead title="My task queue" />
         <div className="divide-y divide-[#edf1f3]">
           {mine.length ? (
-            mine.map((t) => <TicketRow key={t.id} t={t} admin onClick={() => setSelectedId(t.id)} />)
+            <PagedList items={mine} render={(t) => <TicketRow t={t} admin onClick={() => setSelectedId(t.id)} />} />
           ) : (
             <Empty title="Nothing assigned yet" text="Tickets assigned to you will show up here." />
           )}
@@ -1682,7 +1676,9 @@ function SeniorTechnicianMonitor({
         <CardHead title="All assigned issues" />
         {assigned.length ? (
           <div className="divide-y divide-[#edf1f3]">
-            {assigned.map((t) => (
+            <PagedList
+              items={assigned}
+              render={(t) => (
               <div key={t.id} className="flex flex-wrap items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{t.title}</p>
@@ -1701,7 +1697,8 @@ function SeniorTechnicianMonitor({
                   <Trash2 size={14} /> {deletingId === t.id ? 'Removing…' : 'Remove ticket'}
                 </button>
               </div>
-            ))}
+              )}
+            />
           </div>
         ) : (
           <Empty title="No assigned issues yet" text="Once a technician is assigned a ticket, it will show up here." />
@@ -2755,7 +2752,7 @@ function ManagerWorkspace({
         <Card>
           <div className="divide-y divide-[#edf1f3]">
             {rows.length ? (
-              rows.map((t) => <ManagerRow key={t.id} t={t} onClick={() => openTicket(t)} />)
+              <PagedList items={rows} resetKey={`${filter}|${query}`} render={(t) => <ManagerRow t={t} onClick={() => openTicket(t)} />} />
             ) : (
               <Empty title="Nothing here" text="No requests match this filter." />
             )}
@@ -3029,7 +3026,10 @@ function SpecialistWorkspace({
       <Card>
         <div className="divide-y divide-[#edf1f3]">
           {rows.length ? (
-            rows.map((t) => (
+            <PagedList
+              items={rows}
+              resetKey={filter}
+              render={(t) => (
               <div key={t.id} className="flex items-center gap-3 px-1 py-4 hover:bg-[#f8fbfc] sm:gap-4">
                 <button onClick={() => setSelectedId(t.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left sm:gap-4">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eaf4f8] text-[#24769f]">
@@ -3058,7 +3058,8 @@ function SpecialistWorkspace({
                   </div>
                 )}
               </div>
-            ))
+              )}
+            />
           ) : (
             <Empty
               title={filter === 'unclaimed' ? 'Queue is clear' : 'Nothing here'}
@@ -3226,6 +3227,80 @@ function TicketRow({ t, onClick, admin = false }: { t: Ticket; onClick: () => vo
       </div>
       <ArrowRight size={16} className="shrink-0 text-[#9db1bd]" />
     </button>
+  )
+}
+
+// Shows long request lists 10 at a time with Previous / Next buttons.
+const PAGE_SIZE = 10
+
+function PagedList<T extends { id: string }>({
+  items,
+  render,
+  resetKey = '',
+}: {
+  items: T[]
+  render: (item: T) => React.ReactNode
+  // Change this (for example to the current filter or search text) to jump back to page 1.
+  resetKey?: string
+}) {
+  const [page, setPage] = useState(0)
+  const topRef = useRef<HTMLDivElement>(null)
+  const movedByUser = useRef(false)
+
+  useEffect(() => {
+    setPage(0)
+  }, [resetKey])
+
+  const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const current = Math.min(page, pageCount - 1)
+  const start = current * PAGE_SIZE
+  const visible = items.slice(start, start + PAGE_SIZE)
+
+  // After pressing Next/Previous, bring the top of the list back into view.
+  useEffect(() => {
+    if (movedByUser.current) {
+      movedByUser.current = false
+      topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }
+  }, [current])
+
+  const go = (p: number) => {
+    movedByUser.current = true
+    setPage(Math.max(0, Math.min(pageCount - 1, p)))
+  }
+
+  return (
+    <div ref={topRef} className="scroll-mt-24 divide-y divide-[#edf1f3]">
+      {visible.map((item) => (
+        <React.Fragment key={item.id}>{render(item)}</React.Fragment>
+      ))}
+      {items.length > PAGE_SIZE && (
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+          <p className="text-xs font-semibold text-[#648096]">
+            Showing {start + 1}–{start + visible.length} of {items.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => go(current - 1)}
+              disabled={current === 0}
+              className="rounded-xl border border-[#dce7ed] bg-white px-4 py-2 text-xs font-bold text-[#24769f] hover:bg-[#eef5f9] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="text-xs font-bold text-[#31546b]">
+              Page {current + 1} of {pageCount}
+            </span>
+            <button
+              onClick={() => go(current + 1)}
+              disabled={current >= pageCount - 1}
+              className="rounded-xl bg-[#24769f] px-4 py-2 text-xs font-bold text-white hover:bg-[#1d6285] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
