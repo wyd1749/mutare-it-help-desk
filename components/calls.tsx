@@ -125,6 +125,11 @@ function useRingtone() {
   return { start, stop, locked, unlock }
 }
 
+// Senior Technicians staff the monitor desk, so that is what callers see.
+function roleLabel(role?: string) {
+  return role === 'Senior Technician' ? 'Monitor desk' : role ?? ''
+}
+
 function formatClock(totalSeconds: number) {
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
@@ -606,13 +611,13 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               )}
               <div className="max-h-64 overflow-y-auto">
                 {targets
-                  .filter((t) => `${t.name} ${t.role ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+                  .filter((t) => `${t.name} ${roleLabel(t.role)}`.toLowerCase().includes(search.trim().toLowerCase()))
                   .map((t) => (
                     <button key={t.id} onClick={() => placeCall(t)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-[#eef5f9]">
                       <Phone size={16} className="shrink-0 text-[#24769f]" />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-bold text-[#183148]">{t.name}</span>
-                        {t.role && <span className="block truncate text-xs text-[#648096]">{t.role}</span>}
+                        {t.role && <span className="block truncate text-xs text-[#648096]">{roleLabel(t.role)}</span>}
                       </span>
                     </button>
                   ))}
@@ -640,7 +645,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               className="flex h-12 items-center gap-2 rounded-full bg-[#24769f] px-5 text-sm font-bold text-white shadow-[0_12px_30px_rgba(20,53,77,.28)] hover:bg-[#1d6285] disabled:cursor-not-allowed disabled:bg-[#9db6c4]"
             >
               <Phone size={18} />
-              {targets.length === 0 ? (isAdmin ? 'No one to call' : 'No CTO available') : isAdmin ? 'Call someone' : 'Call the CTO'}
+              {targets.length === 0 ? (isAdmin ? 'No one to call' : 'No one available') : isAdmin ? 'Call someone' : 'Call CTO or monitor desk'}
               {(isAdmin || targets.length > 1) && <ChevronDown size={16} />}
             </button>
           </div>
