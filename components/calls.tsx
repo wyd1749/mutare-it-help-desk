@@ -8,6 +8,8 @@ import type { Employee } from '@/lib/supabase/queries'
 import {
   RING_TIMEOUT_MS,
   fetchCallHistory,
+  fetchCallsEnabled,
+  saveCallsEnabled,
   fetchIceServers,
   fetchRingingFor,
   insertCall,
@@ -151,6 +153,7 @@ function formatWhen(iso: string) {
 
 export function CallProvider({ me, children }: { me: Employee; children: React.ReactNode }) {
   const isAdmin = me.role === 'Administrator'
+  const isManager = me.role === 'IT Manager'
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [peer, setPeer] = useState<Peer | null>(null)
@@ -162,6 +165,11 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
   const [search, setSearch] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<CallRow[]>([])
+  // The CTO can switch calling off for everyone. While off, call buttons disappear.
+  const [callsEnabled, setCallsEnabled] = useState(true)
+  const [togglingCalls, setTogglingCalls] = useState(false)
+  // The IT Manager can look at every call record, not only their own.
+  const [historyView, setHistoryView] = useState<'mine' | 'all'>(me.role === 'IT Manager' ? 'all' : 'mine')
   const [lastSeen, setLastSeen] = useState<number>(0)
   const [pushState, setPushState] = useState<'unknown' | 'on' | 'off' | 'unsupported'>('unknown')
 
@@ -193,11 +201,11 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
 
   const refreshHistory = useCallback(async () => {
     try {
-      setHistory(await fetchCallHistory())
+      setHistory(await fetchCallHistory(isManager ? 300 : 50))
     } catch {
       // history is a convenience; ignore failures
     }
-  }, [])
+  }, [isManager])
 
   // Tidy up everything about the current call.
   const cleanup = useCallback(() => {
@@ -492,7 +500,11 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
       .channel(`calls-feed-${me.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls' }, (p) => onCallEvent.current('INSERT', p.new as CallRow))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls' }, (p) => onCallEvent.current('UPDATE', p.new as CallRow))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'call_settings' }, (p) =>
+        setCallsEnabled((p.new as { calls_enabled?: boolean }).calls_enabled !== false)
+      )
       .subscribe()
+    void fetchCallsEnabled().then(setCallsEnabled)
 
     // Catch a call that started while the site was closed (opened from the
     // ring notification) or while the connection was briefly down.
@@ -506,7 +518,11 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
       }
     }
     void checkRinging()
-    const onVisible = () => document.visibilityState === 'visible' && void checkRinging()
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      void checkRinging()
+      void fetchCallsEnabled().then(setCallsEnabled)
+    }
     document.addEventListener('visibilitychange', onVisible)
 
     return () => {
@@ -561,6 +577,22 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
     }
   }
 
+  const toggleCalls = async () => {
+    if (!isAdmin || togglingCalls) return
+    const next = !callsEnabled
+    setTogglingCalls(true)
+    try {
+      const ok = await saveCallsEnabled(next, me.id)
+      if (!ok) throw new Error('not allowed')
+      setCallsEnabled(next)
+      showNotice(next ? 'Calls are on. Everyone can see the call buttons.' : 'Calls are off. The call buttons are hidden for everyone.')
+    } catch {
+      showNotice('Could not change the calls setting. Please try again.')
+    } finally {
+      setTogglingCalls(false)
+    }
+  }
+
   const openHistory = () => {
     setHistoryOpen(true)
     void refreshHistory()
@@ -575,6 +607,16 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
 
   const missedCount = history.filter((c) => c.callee_id === me.id && c.status === 'missed' && new Date(c.created_at).getTime() > lastSeen).length
   const busy = phase !== 'idle'
+  const shownHistory = isManager && historyView === 'all' ? history : history.filter((c) => c.caller_id === me.id || c.callee_id === me.id)
+  const allStats = {
+    total: shownHistory.length,
+    answered: shownHistory.filter((c) => !!c.answered_at).length,
+    missed: shownHistory.filter((c) => c.status === 'missed').length,
+    talkSeconds: shownHistory.reduce(
+      (sum, c) => (c.answered_at && c.ended_at ? sum + Math.max(0, Math.round((new Date(c.ended_at).getTime() - new Date(c.answered_at).getTime()) / 1000)) : sum),
+      0
+    ),
+  }
 
   return (
     <>
@@ -582,14 +624,26 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
       <audio ref={audioRef} autoPlay playsInline />
 
       {/* Floating call controls */}
-      {!busy && (
+      {!busy && (callsEnabled || isAdmin || isManager) && (
         <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
           {notice && (
             <div role="status" className="max-w-[18rem] rounded-xl border border-[#dce7ed] bg-white px-4 py-3 text-sm font-semibold text-[#183148] shadow-[0_12px_30px_rgba(20,53,77,.18)]">
               {notice}
             </div>
           )}
-          {ringtone.locked && (
+          {isAdmin && (
+            <button
+              onClick={toggleCalls}
+              disabled={togglingCalls}
+              role="switch"
+              aria-checked={callsEnabled}
+              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold shadow-[0_8px_20px_rgba(20,53,77,.14)] disabled:opacity-60 ${callsEnabled ? 'border-[#b8e0c8] bg-[#eaf7ef] text-[#1f7a4a] hover:bg-[#dcf1e5]' : 'border-[#f0c4bd] bg-[#fff0ee] text-[#bd3c2d] hover:bg-[#ffe3df]'}`}
+            >
+              <span className={`h-2.5 w-2.5 rounded-full ${callsEnabled ? 'bg-[#2f9e62]' : 'bg-[#bd3c2d]'}`} />
+              Calls are {callsEnabled ? 'on' : 'off'}. Tap to turn {callsEnabled ? 'off' : 'on'}
+            </button>
+          )}
+          {callsEnabled && ringtone.locked && (
             <button
               onClick={ringtone.unlock}
               className="flex items-center gap-2 rounded-full border border-[#f0d9a0] bg-[#fff8e6] px-4 py-2 text-xs font-bold text-[#8a6410] shadow-[0_8px_20px_rgba(20,53,77,.14)] hover:bg-[#fff1cc]"
@@ -597,7 +651,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               <Bell size={14} /> Click to turn on the ringtone sound
             </button>
           )}
-          {pickerOpen && targets.length > 0 && (
+          {callsEnabled && pickerOpen && targets.length > 0 && (
             <div className="w-72 rounded-2xl border border-[#dce7ed] bg-white p-2 shadow-[0_18px_45px_rgba(20,53,77,.18)]">
               <p className="px-3 py-2 text-xs font-bold text-[#648096]">Who do you want to call?</p>
               {targets.length > 6 && (
@@ -635,6 +689,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#bd3c2d] px-1 text-[11px] font-bold text-white">{missedCount}</span>
               )}
             </button>
+            {callsEnabled && (
             <button
               onClick={() => {
                 setSearch('')
@@ -648,6 +703,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               {targets.length === 0 ? (isAdmin ? 'No one to call' : 'No one available') : isAdmin ? 'Call someone' : 'Call CTO or monitor desk'}
               {(isAdmin || targets.length > 1) && <ChevronDown size={16} />}
             </button>
+            )}
           </div>
         </div>
       )}
@@ -713,7 +769,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
             role="dialog"
             aria-label="Call history"
             onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[80vh] w-full flex-col rounded-2xl bg-white shadow-[0_24px_60px_rgba(8,24,38,.35)] sm:max-h-none sm:w-96"
+            className={`flex max-h-[80vh] w-full flex-col rounded-2xl bg-white shadow-[0_24px_60px_rgba(8,24,38,.35)] sm:max-h-none ${isManager ? 'sm:w-[30rem]' : 'sm:w-96'}`}
           >
             <div className="flex items-center justify-between border-b border-[#e4edf2] px-5 py-4">
               <h2 className="font-serif text-lg font-bold text-[#183148]">Call history</h2>
@@ -722,6 +778,26 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               </button>
             </div>
 
+            {isManager && (
+              <div className="mx-5 mt-4 flex gap-1 rounded-xl bg-[#eef5f9] p-1" role="tablist">
+                {(['all', 'mine'] as const).map((v) => (
+                  <button
+                    key={v}
+                    role="tab"
+                    aria-selected={historyView === v}
+                    onClick={() => setHistoryView(v)}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${historyView === v ? 'bg-white text-[#183148] shadow-sm' : 'text-[#648096]'}`}
+                  >
+                    {v === 'all' ? 'All calls' : 'My calls'}
+                  </button>
+                ))}
+              </div>
+            )}
+            {isManager && historyView === 'all' && (
+              <p className="mx-5 mt-3 text-xs text-[#648096]">
+                {allStats.total} calls · {allStats.answered} answered · {allStats.missed} not answered · {formatClock(allStats.talkSeconds)} total talk time
+              </p>
+            )}
             {pushState === 'off' && (
               <button onClick={enableRingAlerts} className="mx-5 mt-4 flex items-center gap-2 rounded-xl bg-[#eef5f9] px-4 py-3 text-left text-sm font-bold text-[#24769f] hover:bg-[#dfecf3]">
                 <Bell size={16} /> Turn on ringing when the site is closed
@@ -730,13 +806,14 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
             {pushState === 'on' && <p className="mx-5 mt-4 text-xs text-[#648096]">Ringing alerts are on for this device.</p>}
 
             <ul className="min-h-0 flex-1 divide-y divide-[#eef3f6] overflow-y-auto px-2 py-2">
-              {history.length === 0 && <li className="px-3 py-8 text-center text-sm text-[#648096]">No calls yet.</li>}
-              {history.map((c) => {
+              {shownHistory.length === 0 && <li className="px-3 py-8 text-center text-sm text-[#648096]">No calls yet.</li>}
+              {shownHistory.map((c) => {
                 const outgoing = c.caller_id === me.id
-                const other = outgoing ? c.callee_name : c.caller_name
-                const missed = c.status === 'missed' && !outgoing
+                const mine = outgoing || c.callee_id === me.id
+                const other = mine ? (outgoing ? c.callee_name : c.caller_name) : `${c.caller_name ?? 'Unknown'} → ${c.callee_name ?? 'Unknown'}`
+                const missed = c.status === 'missed' && !outgoing && mine
                 const label =
-                  c.status === 'missed' ? (outgoing ? 'Not answered' : 'Missed') : c.status === 'declined' ? 'Declined' : c.status === 'ringing' ? 'Ringing' : c.status === 'active' ? 'In progress' : `Answered ${formatDuration(c)}`.trim()
+                  c.status === 'missed' ? (outgoing || !mine ? 'Not answered' : 'Missed') : c.status === 'declined' ? 'Declined' : c.status === 'ringing' ? 'Ringing' : c.status === 'active' ? 'In progress' : `Answered ${formatDuration(c)}`.trim()
                 return (
                   <li key={c.id} className="flex items-center gap-3 px-3 py-3">
                     <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${missed ? 'bg-[#fff0ee] text-[#bd3c2d]' : 'bg-[#eef5f9] text-[#24769f]'}`}>
@@ -745,7 +822,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
                     <span className="min-w-0 flex-1">
                       <span className={`block truncate text-sm font-bold ${missed ? 'text-[#bd3c2d]' : 'text-[#183148]'}`}>{other ?? 'Unknown'}</span>
                       <span className="block text-xs text-[#648096]">
-                        {outgoing ? 'Outgoing' : 'Incoming'} · {label}
+                        {mine ? `${outgoing ? 'Outgoing' : 'Incoming'} · ` : ''}{label}
                       </span>
                     </span>
                     <span className="shrink-0 text-xs text-[#648096]">{formatWhen(c.created_at)}</span>

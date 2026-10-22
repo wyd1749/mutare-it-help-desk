@@ -111,3 +111,27 @@ export async function ringCallee(callId: string): Promise<void> {
     // ignore
   }
 }
+
+// --- On/off switch for the whole calling feature (the CTO controls it) ---
+
+// If the setting can't be read (for example the SQL has not been run yet),
+// calling stays on so nothing breaks.
+export async function fetchCallsEnabled(): Promise<boolean> {
+  try {
+    const { data, error } = await createClient().from('call_settings').select('calls_enabled').eq('id', true).maybeSingle()
+    if (error || !data) return true
+    return data.calls_enabled !== false
+  } catch {
+    return true
+  }
+}
+
+export async function saveCallsEnabled(enabled: boolean, byEmployeeId: string): Promise<boolean> {
+  const { data, error } = await createClient()
+    .from('call_settings')
+    .update({ calls_enabled: enabled, updated_at: new Date().toISOString(), updated_by: byEmployeeId })
+    .eq('id', true)
+    .select('calls_enabled')
+  if (error) throw error
+  return !!data && data.length > 0
+}
