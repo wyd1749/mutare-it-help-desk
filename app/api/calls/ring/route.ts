@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import webpush from 'web-push'
+import { createECDH } from 'node:crypto'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,12 +9,22 @@ export const dynamic = 'force-dynamic'
 // even when the site is closed. The caller is identified from their session
 // token, and must really be the caller on that call.
 //
-// Uses the same VAPID keys as your existing push notifications. If your
-// existing notify route names these environment variables differently, change
-// the three names below to match.
-const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+// Uses your existing VAPID_PRIVATE_KEY and VAPID_SUBJECT environment variables.
+// The matching public key is worked out from the private key, so you don't
+// need to add a public-key variable here. (If NEXT_PUBLIC_VAPID_PUBLIC_KEY is
+// set, it is used instead.)
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@example.com'
+
+function derivePublicKey(privateKey: string): string | null {
+  try {
+    const ecdh = createECDH('prime256v1')
+    ecdh.setPrivateKey(Buffer.from(privateKey, 'base64url'))
+    return ecdh.getPublicKey().toString('base64url')
+  } catch {
+    return null
+  }
+}
 
 export async function POST(request: Request) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
@@ -48,8 +59,9 @@ export async function POST(request: Request) {
   const ageMs = Date.now() - new Date(call.created_at).getTime()
   if (call.status !== 'ringing' || ageMs > 60_000) return Response.json({ ok: true, sent: 0 })
 
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return Response.json({ error: 'Push is not configured' }, { status: 503 })
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
+  const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || (VAPID_PRIVATE ? derivePublicKey(VAPID_PRIVATE) : null)
+  if (!vapidPublic || !VAPID_PRIVATE) return Response.json({ error: 'Push is not configured' }, { status: 503 })
+  webpush.setVapidDetails(VAPID_SUBJECT, vapidPublic, VAPID_PRIVATE)
 
   const { data: subs } = await admin
     .from('push_subscriptions')
