@@ -3,10 +3,18 @@ import { createClient } from '@supabase/supabase-js'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// Roles that may receive background alerts. Add 'Technician' here later if
-// assigned technicians should get pushes too. 'Administrator' is here so the
-// CTO's device can ring for incoming calls when the site is closed.
-const ALLOWED_ROLES = ['Senior Technician', 'Administrator']
+// Roles that may register a device for background alerts. Every role is here
+// so any employee's device can ring for an incoming call from the CTO.
+const ALLOWED_ROLES = [
+  'Employee',
+  'Technician',
+  'Senior Technician',
+  'Administrator',
+  'IT Manager',
+  'Network Administrator',
+  'System Administrator',
+  'Web Services Administrator',
+]
 
 export async function POST(request: Request) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')

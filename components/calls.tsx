@@ -94,6 +94,7 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
   const [notice, setNotice] = useState<string | null>(null)
   const [targets, setTargets] = useState<CallTarget[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<CallRow[]>([])
   const [lastSeen, setLastSeen] = useState<number>(0)
@@ -430,19 +431,17 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
 
   // Who can be called, call history, and the "last looked" marker for the missed-call badge.
   useEffect(() => {
-    if (!isAdmin) listCallTargets().then(setTargets).catch(() => setTargets([]))
+    listCallTargets().then(setTargets).catch(() => setTargets([]))
     void refreshHistory()
     try {
       setLastSeen(Number(localStorage.getItem(`calls:lastSeen:${me.id}`) || 0))
     } catch {
       // storage can be blocked
     }
-    if (isAdmin) {
-      if (typeof window === 'undefined' || !('Notification' in window)) setPushState('unsupported')
-      else setPushState(Notification.permission === 'granted' ? 'on' : 'off')
-      if ('Notification' in window && Notification.permission === 'granted') void subscribeToPush()
-    }
-  }, [me.id, isAdmin, refreshHistory])
+    if (typeof window === 'undefined' || !('Notification' in window)) setPushState('unsupported')
+    else setPushState(Notification.permission === 'granted' ? 'on' : 'off')
+    if ('Notification' in window && Notification.permission === 'granted') void subscribeToPush()
+  }, [me.id, refreshHistory])
 
   // Call timer
   useEffect(() => {
@@ -503,14 +502,31 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               {notice}
             </div>
           )}
-          {pickerOpen && targets.length > 1 && (
-            <div className="w-64 rounded-2xl border border-[#dce7ed] bg-white p-2 shadow-[0_18px_45px_rgba(20,53,77,.18)]">
+          {pickerOpen && targets.length > 0 && (
+            <div className="w-72 rounded-2xl border border-[#dce7ed] bg-white p-2 shadow-[0_18px_45px_rgba(20,53,77,.18)]">
               <p className="px-3 py-2 text-xs font-bold text-[#648096]">Who do you want to call?</p>
-              {targets.map((t) => (
-                <button key={t.id} onClick={() => placeCall(t)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-[#183148] hover:bg-[#eef5f9]">
-                  <Phone size={16} className="text-[#24769f]" /> {t.name}
-                </button>
-              ))}
+              {targets.length > 6 && (
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by name or role"
+                  aria-label="Search people to call"
+                  className="mb-1 w-full rounded-xl border border-[#dce7ed] px-3 py-2 text-sm outline-none focus:border-[#24769f]"
+                />
+              )}
+              <div className="max-h-64 overflow-y-auto">
+                {targets
+                  .filter((t) => `${t.name} ${t.role ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+                  .map((t) => (
+                    <button key={t.id} onClick={() => placeCall(t)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-[#eef5f9]">
+                      <Phone size={16} className="shrink-0 text-[#24769f]" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-[#183148]">{t.name}</span>
+                        {t.role && <span className="block truncate text-xs text-[#648096]">{t.role}</span>}
+                      </span>
+                    </button>
+                  ))}
+              </div>
             </div>
           )}
           <div className="flex items-center gap-2">
@@ -524,16 +540,19 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#bd3c2d] px-1 text-[11px] font-bold text-white">{missedCount}</span>
               )}
             </button>
-            {!isAdmin && (
-              <button
-                onClick={() => (targets.length === 1 ? placeCall(targets[0]) : setPickerOpen((o) => !o))}
-                disabled={targets.length === 0}
-                className="flex h-12 items-center gap-2 rounded-full bg-[#24769f] px-5 text-sm font-bold text-white shadow-[0_12px_30px_rgba(20,53,77,.28)] hover:bg-[#1d6285] disabled:cursor-not-allowed disabled:bg-[#9db6c4]"
-              >
-                <Phone size={18} /> {targets.length === 0 ? 'No CTO available' : 'Call the CTO'}
-                {targets.length > 1 && <ChevronDown size={16} />}
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setSearch('')
+                if (!isAdmin && targets.length === 1) void placeCall(targets[0])
+                else setPickerOpen((o) => !o)
+              }}
+              disabled={targets.length === 0}
+              className="flex h-12 items-center gap-2 rounded-full bg-[#24769f] px-5 text-sm font-bold text-white shadow-[0_12px_30px_rgba(20,53,77,.28)] hover:bg-[#1d6285] disabled:cursor-not-allowed disabled:bg-[#9db6c4]"
+            >
+              <Phone size={18} />
+              {targets.length === 0 ? (isAdmin ? 'No one to call' : 'No CTO available') : isAdmin ? 'Call someone' : 'Call the CTO'}
+              {(isAdmin || targets.length > 1) && <ChevronDown size={16} />}
+            </button>
           </div>
         </div>
       )}
@@ -603,12 +622,12 @@ export function CallProvider({ me, children }: { me: Employee; children: React.R
               </button>
             </div>
 
-            {isAdmin && pushState === 'off' && (
+            {pushState === 'off' && (
               <button onClick={enableRingAlerts} className="mx-5 mt-4 flex items-center gap-2 rounded-xl bg-[#eef5f9] px-4 py-3 text-left text-sm font-bold text-[#24769f] hover:bg-[#dfecf3]">
                 <Bell size={16} /> Turn on ringing when the site is closed
               </button>
             )}
-            {isAdmin && pushState === 'on' && <p className="mx-5 mt-4 text-xs text-[#648096]">Ringing alerts are on for this device.</p>}
+            {pushState === 'on' && <p className="mx-5 mt-4 text-xs text-[#648096]">Ringing alerts are on for this device.</p>}
 
             <ul className="min-h-0 flex-1 divide-y divide-[#eef3f6] overflow-y-auto px-2 py-2">
               {history.length === 0 && <li className="px-3 py-8 text-center text-sm text-[#648096]">No calls yet.</li>}

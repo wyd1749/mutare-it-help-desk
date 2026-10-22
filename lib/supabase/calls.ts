@@ -14,7 +14,7 @@ export type CallRow = {
   ended_at: string | null
 }
 
-export type CallTarget = { id: string; name: string }
+export type CallTarget = { id: string; name: string; role?: string }
 
 const COLUMNS = 'id,caller_id,callee_id,caller_name,callee_name,status,created_at,answered_at,ended_at'
 
